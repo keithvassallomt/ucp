@@ -122,6 +122,8 @@ fn configure_client() -> Result<ClientConfig, Box<dyn Error>> {
                 SignatureScheme::RSA_PSS_SHA384,
                 SignatureScheme::RSA_PSS_SHA512,
                 SignatureScheme::ED25519,
+                SignatureScheme::ECDSA_NISTP256_SHA256,
+                SignatureScheme::ECDSA_NISTP384_SHA384,
             ]
         }
     }
