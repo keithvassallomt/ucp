@@ -1,3 +1,4 @@
+use crate::protocol::Message;
 use crate::state::AppState;
 use crate::transport::Transport;
 use arboard::Clipboard;
@@ -59,7 +60,9 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
 
                     // Broadcast to peers
                     let peers = state.get_peers();
-                    let data = text.as_bytes();
+                    // Wrap in protocol message
+                    let msg = Message::Clipboard(text.clone());
+                    let data = serde_json::to_vec(&msg).unwrap_or_default();
 
                     for peer in peers.values() {
                         let target = peer.ip;

@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::net::IpAddr;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Peer {
     pub id: String,
-    pub ip: IpAddr,
+    pub ip: std::net::IpAddr,
     pub port: u16,
     pub hostname: String,
-    pub last_seen: u64, // timestamp for pruning old peers
-}
+    pub last_seen: u64,
+    pub is_trusted: bool,
+} // timestamp for pruning old peers

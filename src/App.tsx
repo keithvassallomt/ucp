@@ -10,12 +10,16 @@ interface Peer {
   hostname: string;
   port: number;
   last_seen: number;
+  is_trusted: boolean;
 }
 
 function App() {
-  const [peers, setPeers] = useState<Peer[]>([]);
-  const [clipboardHistory, setClipboardHistory] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<"devices" | "history">("devices");
+  /* Pairing State */
+  const [pairingPeer, setPairingPeer] = useState<Peer | null>(null);
+  const [incomingRequest, setIncomingRequest] = useState<{ peer_ip: string; msg: number[] } | null>(null);
+  const [pin, setPin] = useState("");
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [pairingStep, setPairingStep] = useState<"init" | "respond">("init");
 
   useEffect(() => {
     // Initial fetch
@@ -35,14 +39,70 @@ function App() {
       setClipboardHistory((prev) => [event.payload, ...prev].slice(0, 10)); // Keep last 10
     });
 
+    const unlistenPairing = listen<{ peer_ip: string; msg: number[] }>("pairing-request", (event) => {
+        console.log("Received pairing request", event.payload);
+        setIncomingRequest(event.payload);
+        setPairingStep("respond");
+        setShowPairingModal(true);
+        // Try to match IP to a known peer for display name
+        const peer = peers.find(p => p.ip === event.payload.peer_ip);
+        if (peer) setPairingPeer(peer);
+    });
+
     return () => {
       unlistenPeer.then((f) => f());
       unlistenClipboard.then((f) => f());
+      unlistenPairing.then((f) => f());
     };
-  }, []);
+  }, [peers]); // Add peers to dependency to lookup peer on request? Or ref?
+
+  const startPairing = (peer: Peer) => {
+      setPairingPeer(peer);
+      setPairingStep("init");
+      setPin("");
+      setShowPairingModal(true);
+  };
+
+  const submitPairing = async () => {
+      if (!pin) return;
+      
+      try {
+          if (pairingStep === "init" && pairingPeer) {
+              await invoke("initiate_pairing", { peerId: pairingPeer.id, pin });
+              alert("Pairing Request Sent! Ask the other user to verify.");
+              setShowPairingModal(false);
+          } else if (pairingStep === "respond") {
+              // We need the peer ID. If we found it, great. If not (unknown IP), we might fail.
+              // For now assuming we found it via IP or user knows.
+              // If incomingRequest doesn't map to peer, we need to handle that.
+              
+              // Find peer by IP if we haven't already
+              let targetId = pairingPeer?.id;
+              if (!targetId && incomingRequest) {
+                  const p = peers.find(x => x.ip === incomingRequest.peer_ip);
+                  if (p) targetId = p.id;
+              }
+
+              if (targetId && incomingRequest) {
+                  await invoke("respond_to_pairing", { 
+                      peerId: targetId, 
+                      pin, 
+                      requestMsg: incomingRequest.msg 
+                  });
+                  alert("Pairing Verified! You are now connected.");
+                  setShowPairingModal(false);
+                  setIncomingRequest(null);
+              } else {
+                  alert("Could not find peer info for " + incomingRequest?.peer_ip);
+              }
+          }
+      } catch (e) {
+          alert("Pairing Failed: " + String(e));
+      }
+  };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-neutral-900 text-white overflow-hidden font-sans">
+    <div className="flex flex-col h-screen w-screen bg-neutral-900 text-white overflow-hidden font-sans relative">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 bg-neutral-800 border-b border-neutral-700 select-none drag-region">
         <div className="flex items-center gap-2">
@@ -89,11 +149,20 @@ function App() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
+                                {/* Pairing Button */}
+                                <button 
+                                    onClick={() => startPairing(peer)}
+                                    className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-xs rounded-md transition-colors"
+                                >
+                                    Pair
+                                </button>
                                 {/* Status Indicator */}
-                                <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-md border border-emerald-500/20">
-                                    <ShieldCheck size={12} />
-                                    <span>Trusted</span>
-                                </div>
+                                {peer.is_trusted && (
+                                    <div className="flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-md border border-emerald-500/20">
+                                        <ShieldCheck size={12} />
+                                        <span>Trusted</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))
@@ -126,6 +195,46 @@ function App() {
         </div>
         <span>v0.1.0</span>
       </footer>
+
+      {/* Pairing Modal */}
+      {showPairingModal && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+              <div className="bg-neutral-800 border border-neutral-700 rounded-xl p-6 w-full max-w-sm shadow-2xl">
+                  <h3 className="text-lg font-bold mb-2">
+                      {pairingStep === "init" ? "Pair Device" : "Pairing Request"}
+                  </h3>
+                  <p className="text-neutral-400 text-sm mb-4">
+                      {pairingStep === "init" 
+                        ? `Enter a PIN to pair with ${pairingPeer?.hostname}. Proceed on the other device.` 
+                        : `Enter the PIN displayed on the other device (${incomingRequest?.peer_ip}).`
+                      }
+                  </p>
+                  
+                  <input 
+                      type="text" 
+                      placeholder="Enter PIN (e.g. 1234)" 
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-3 mb-4 outline-none focus:border-blue-500 font-mono text-center text-xl tracking-widest"
+                      value={pin}
+                      onChange={e => setPin(e.target.value)}
+                  />
+                  
+                  <div className="flex gap-2">
+                      <button 
+                          onClick={() => setShowPairingModal(false)}
+                          className="flex-1 px-4 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg transition-colors"
+                      >
+                          Cancel
+                      </button>
+                      <button 
+                          onClick={submitPairing}
+                          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors font-medium"
+                      >
+                          {pairingStep === "init" ? "Send Request" : "Verify & Pair"}
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 }
