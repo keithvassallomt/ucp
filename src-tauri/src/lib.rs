@@ -4,6 +4,7 @@ mod discovery;
 mod peer;
 mod protocol;
 mod state;
+mod storage;
 mod transport;
 
 use discovery::Discovery;
@@ -11,6 +12,7 @@ use peer::Peer;
 use protocol::Message;
 use rand::Rng;
 use state::AppState;
+use storage::{load_trusted_peers, save_trusted_peers};
 use tauri::{Emitter, Manager};
 use transport::Transport;
 
@@ -82,6 +84,7 @@ async fn respond_to_pairing(
     request_msg: Vec<u8>,
     state: tauri::State<'_, AppState>,
     transport: tauri::State<'_, Transport>,
+    app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     // 1. Find peer address
     let peer_addr = {
@@ -109,6 +112,9 @@ async fn respond_to_pairing(
     {
         let mut trusted = state.trusted_keys.lock().unwrap();
         trusted.insert(peer_id.clone(), shared_key);
+        // Save to disk
+        save_trusted_peers(&app_handle, &trusted);
+
         // Also might want to map Address -> Key for incoming packets?
         // But address changes. PeerID is stable.
         // We will need to map PeerID to connection.
@@ -145,6 +151,14 @@ pub fn run() {
 
             let port = transport.local_addr().expect("Failed to get port").port();
             println!("QUIC Transport listening on port {}", port);
+
+            // Load Trusted Peers
+            {
+                let trusted = load_trusted_peers(app.handle());
+                let setup_state = app.state::<AppState>();
+                let mut state_trusted = setup_state.trusted_keys.lock().unwrap();
+                *state_trusted = trusted;
+            }
 
             // Store transport in state? For now just keep it alive by moving to a leaked global or app state
             // But we need to keep it running.
@@ -295,6 +309,11 @@ pub fn run() {
 
                                         if let Some(id) = found_id {
                                             trusted.insert(id.clone(), key);
+                                            // Save to disk
+                                            save_trusted_peers(
+                                                listener_handle.app_handle(),
+                                                &trusted,
+                                            );
 
                                             // Update Peer status in map
                                             {
