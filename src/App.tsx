@@ -38,16 +38,25 @@ function App() {
         setPeers(Object.values(peerMap));
     });
 
-    // ... (peer-update listener)
+    const unlistenPeer = listen<Peer>("peer-update", (event) => {
+      setPeers((prev) => {
+        const exists = prev.find((p) => p.id === event.payload.id);
+        if (exists) return prev.map((p) => (p.id === event.payload.id ? event.payload : p));
+        return [...prev, event.payload];
+      });
+    });
 
-    // ... (clipboard listener)
+    const unlistenClipboard = listen<string>("clipboard-change", (event) => {
+      setClipboardHistory((prev) => [event.payload, ...prev].slice(0, 10)); // Keep last 10
+    });
 
     const unlistenPairing = listen<{ peer_addr: string; device_id: string; msg: number[] }>("pairing-request", (event) => {
         console.log("Received pairing request", event.payload);
         setIncomingRequest(event.payload);
         setPairingStep("respond");
         setShowPairingModal(true);
-        // Use ref to find peer without re-binding listener
+        
+        // Try to match known peer
         // Try match by IP within address?
         const ip = event.payload.peer_addr.split(":")[0];
         const peer = peersRef.current.find(p => p.ip === ip || p.id === event.payload.device_id);
@@ -95,7 +104,6 @@ function App() {
           } else if (pairingStep === "respond") {
               // We need the peer ID. If we found it, great. If not (unknown IP), we might fail.
               // For now assuming we found it via IP or user knows.
-              // If incomingRequest doesn't map to peer, we need to handle that.
               
               const targetId = pairingPeer?.id || null;
               
@@ -234,10 +242,10 @@ function App() {
                               Please check the other device.
                           </p>
                            <button 
-                              onClick={() => setShowPairingModal(false)}
-                              className="px-4 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg transition-colors text-sm"
-                          >
-                              Close
+                               onClick={() => setShowPairingModal(false)}
+                               className="px-4 py-2 bg-neutral-700 hover:bg-neutral-600 rounded-lg transition-colors text-sm"
+                           >
+                               Close
                           </button>
                       </div>
                   ) : (
