@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { Monitor, Copy, History, ShieldCheck } from "lucide-react";
+import { Monitor, Copy, History, ShieldCheck, PlusCircle } from "lucide-react";
 import clsx from "clsx";
 
 interface Peer {
@@ -79,6 +79,17 @@ function App() {
       setShowPairingModal(true);
   };
 
+  const addManualPeer = async () => {
+      const input = prompt("Enter Peer Address (IP:PORT)", "");
+      if (!input) return;
+      
+      try {
+          await invoke("add_manual_peer", { ip: input });
+      } catch (e) {
+          alert("Failed to add peer: " + String(e));
+      }
+  };
+
   const submitPairing = async () => {
       if (!pin) return;
       
@@ -145,7 +156,12 @@ function App() {
       <main className="flex-1 overflow-y-auto p-4">
         {activeTab === "devices" && (
             <div className="space-y-3">
-                <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">Nearby Devices</h2>
+                <div className="flex items-center justify-between mb-2">
+                    <h2 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Nearby Devices</h2>
+                    <button onClick={addManualPeer} className="text-neutral-500 hover:text-white transition-colors" title="Add Manual Peer">
+                        <PlusCircle size={16} />
+                    </button>
+                </div>
                 
                 {peers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-neutral-500 border border-dashed border-neutral-700 rounded-xl">

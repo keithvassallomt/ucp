@@ -27,6 +27,68 @@ fn get_peers(state: tauri::State<AppState>) -> std::collections::HashMap<String,
 }
 
 #[tauri::command]
+async fn add_manual_peer(
+    ip: String,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // Basic IP validation
+    let ip_addr: std::net::IpAddr = ip.parse().map_err(|_| "Invalid IP address")?;
+    // Default port for manual entry? We should probably ask for it or assume default QUIC port if not specified?
+    // Discovery usually tells us the port. Manual entry... let's assume valid port or passed in?
+    // "Quick and dirty" -> try default port? But port is random in current impl!
+    // Ah, `Transport::new(0)` binds random port.
+    // If we want manual entry, we need the peer to be listening on a known port OR we need to input it.
+    // User asked "via ip address".
+    // If the other peer is random port, we can't guess it.
+    // BUT maybe we can assume for "Quick and Dirty" that we might need the port too?
+    // Or... we just try to discover it? No, mDNS failed.
+    // FIX: We need to change `Transport::new(0)` to a fixed port if we want manual IP to work reliably without port input,
+    // OR require port input.
+    // User asked "via ip address".
+    // Let's allow "ip:port" string or defaults.
+    // But realistically, if we can't discover, we probably don't know the port if it's random.
+    // FAILURE mode: User enters IP. We assume what?
+    // Maybe we just let them enter IP and we assume the port is... wait, we print it on startup.
+    // Let's assume user knows the port or enters "IP:PORT".
+
+    // Parse IP:PORT or just IP
+    let (addr, port) = if let Ok(sock) = ip.parse::<std::net::SocketAddr>() {
+        (sock.ip(), sock.port())
+    } else {
+        // Just IP?
+        (ip_addr, 0) // 0 means... unusable? We need a port.
+    };
+
+    if port == 0 {
+        return Err("Please specify IP:PORT (e.g., 192.168.1.5:4567)".to_string());
+    }
+
+    let id = format!("manual-{}", ip);
+
+    let peer = Peer {
+        id: id.clone(),
+        ip: addr,
+        port,
+        hostname: format!("Manual ({})", ip),
+        last_seen: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        is_trusted: {
+            let trusted = state.trusted_keys.lock().unwrap();
+            // We don't verify trust on add because we don't know real ID yet.
+            false
+        },
+    };
+
+    state.add_peer(peer.clone());
+    let _ = app_handle.emit("peer-update", &peer);
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn initiate_pairing(
     peer_id: String,
     pin: String,
@@ -346,8 +408,13 @@ pub fn run() {
                                             }
                                         }
 
-                                        if let Some(id) = found_id {
-                                            trusted.insert(id.clone(), key);
+                                        if let Some(mut id) = found_id {
+                                            // CHECK: Is this a manual peer?
+                                            // The real ID is `device_id` (from packet).
+                                            // The `id` we found is from our map (maybe "manual-...").
+
+                                            let real_id = device_id.clone();
+                                            trusted.insert(real_id.clone(), key);
                                             // Save to disk
                                             save_trusted_peers(
                                                 listener_handle.app_handle(),
@@ -355,16 +422,45 @@ pub fn run() {
                                             );
 
                                             // Update Peer status in map
+                                            let mut final_peer_to_emit = None;
+
                                             {
                                                 let mut peers_guard =
                                                     listener_state.peers.lock().unwrap();
-                                                if let Some(peer) = peers_guard.get_mut(&id) {
-                                                    peer.is_trusted = true;
+
+                                                if id != real_id {
+                                                    // Rename / Replace
+                                                    if let Some(mut p) = peers_guard.remove(&id) {
+                                                        println!(
+                                                            "Promoting peer {} to {}",
+                                                            id, real_id
+                                                        );
+                                                        p.id = real_id.clone();
+                                                        p.is_trusted = true;
+                                                        p.hostname =
+                                                            p.hostname.replace("Manual", "Peer"); // Cleanup name?
+                                                        peers_guard
+                                                            .insert(real_id.clone(), p.clone());
+                                                        final_peer_to_emit = Some(p);
+
+                                                        // We should emit a remove for the old ID?
+                                                        let _ = listener_handle
+                                                            .emit("peer-remove", &id);
+                                                    }
+                                                } else {
+                                                    // Standard update
+                                                    if let Some(peer) = peers_guard.get_mut(&id) {
+                                                        peer.is_trusted = true;
+                                                    }
                                                 }
                                             }
 
                                             // Emit update
-                                            if let Some(peer) = listener_state.get_peers().get(&id)
+                                            if let Some(peer) = final_peer_to_emit {
+                                                let _ = listener_handle.emit("peer-update", &peer);
+                                            } else if let Some(peer) =
+                                                listener_state.get_peers().get(&real_id)
+                                            // Use real_id here
                                             {
                                                 let _ = listener_handle.emit("peer-update", &peer);
                                             }
@@ -414,7 +510,8 @@ pub fn run() {
             greet,
             get_peers,
             initiate_pairing,
-            respond_to_pairing
+            respond_to_pairing,
+            add_manual_peer
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
