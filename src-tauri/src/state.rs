@@ -14,6 +14,8 @@ pub struct AppState {
     // Store trusted keys: PeerID -> Shared Key (32 bytes usually)
     pub trusted_keys: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     pub local_device_id: Arc<Mutex<String>>,
+    // Keep discovery alive so it doesn't unregister
+    pub discovery: Arc<Mutex<Option<crate::discovery::Discovery>>>,
 }
 
 impl AppState {
@@ -23,6 +25,7 @@ impl AppState {
             pending_handshakes: Arc::new(Mutex::new(HashMap::new())),
             trusted_keys: Arc::new(Mutex::new(HashMap::new())),
             local_device_id: Arc::new(Mutex::new(String::new())),
+            discovery: Arc::new(Mutex::new(None)),
         }
     }
 

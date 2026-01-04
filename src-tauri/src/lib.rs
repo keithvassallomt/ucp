@@ -173,7 +173,7 @@ pub fn run() {
             // But we need to keep it running.
             // For MVP, we can spawn the server accept loop here.
 
-            let discovery = Discovery::new().expect("Failed to initialize discovery");
+            let mut discovery = Discovery::new().expect("Failed to initialize discovery");
 
             // Load (or generate) Device ID
             let mut device_id = load_device_id(app.handle());
@@ -200,6 +200,13 @@ pub fn run() {
 
             // Start browsing for peers
             let receiver = discovery.browse().expect("Failed to browse");
+
+            // Move discovery to State to keep it alive
+            {
+                let state = app.state::<AppState>();
+                let mut d_lock = state.discovery.lock().unwrap();
+                *d_lock = Some(discovery);
+            }
 
             let app_handle = app.handle().clone();
             let state_ref = app.state::<AppState>();
