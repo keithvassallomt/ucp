@@ -14,6 +14,10 @@ interface Peer {
 }
 
 function App() {
+  const [peers, setPeers] = useState<Peer[]>([]);
+  const [clipboardHistory, setClipboardHistory] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<"devices" | "history">("devices");
+
   /* Pairing State */
   const [pairingPeer, setPairingPeer] = useState<Peer | null>(null);
   const [incomingRequest, setIncomingRequest] = useState<{ peer_ip: string; msg: number[] } | null>(null);
