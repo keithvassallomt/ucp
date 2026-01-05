@@ -96,6 +96,7 @@ async fn add_manual_peer(
             .unwrap_or_default()
             .as_secs(),
         is_trusted: false,
+        is_manual: true,
     };
 
     state.add_peer(peer.clone());
@@ -113,6 +114,32 @@ async fn add_manual_peer(
 
     // Gossip this new manual peer to others!
     gossip_peer(&peer, &state, &transport, None);
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_peer(
+    peer_id: String,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // 1. Remove from Known Peers
+    {
+        let mut kp = state.known_peers.lock().unwrap();
+        if kp.remove(&peer_id).is_some() {
+            save_known_peers(&app_handle, &kp);
+        }
+    }
+
+    // 2. Remove from Runtime Peers
+    {
+        let mut peers = state.peers.lock().unwrap();
+        peers.remove(&peer_id);
+    }
+
+    // 3. Emit Removal
+    let _ = app_handle.emit("peer-remove", &peer_id);
 
     Ok(())
 }
@@ -278,6 +305,7 @@ async fn respond_to_pairing(
                     .unwrap_or_default()
                     .as_secs(),
                 is_trusted: true,
+                is_manual: false, // Defaulting to false here as we assume mDNS, but we could check against existing known?
             };
             kp_lock.insert(target_id.clone(), p.clone());
             save_known_peers(&app_handle, &kp_lock);
@@ -322,9 +350,12 @@ pub fn run() {
                 *kp_lock = load_known_peers(app_handle);
                 
                 // Load known peers into RUNTIME state too! (Fixes UI not showing known peers on restart)
+                // BUT: Only show Manual peers initially. mDNS peers will show up when discovered.
                 let mut runtime_peers = state.peers.lock().unwrap();
                 for peer in kp_lock.values() {
-                     runtime_peers.insert(peer.id.clone(), peer.clone());
+                     if peer.is_manual {
+                        runtime_peers.insert(peer.id.clone(), peer.clone());
+                     }
                 }
 
                 // 3. Load Device ID
@@ -384,6 +415,7 @@ pub fn run() {
                                             .unwrap_or_default()
                                             .as_secs(),
                                         is_trusted: is_known,
+                                        is_manual: false,
                                     };
 
                                     d_state.add_peer(peer.clone());
@@ -570,7 +602,8 @@ pub fn run() {
             get_peers,
             initiate_pairing,
             respond_to_pairing,
-            add_manual_peer
+            add_manual_peer,
+            delete_peer
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

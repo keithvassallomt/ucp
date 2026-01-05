@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { Monitor, Copy, History, ShieldCheck, PlusCircle } from "lucide-react";
+import { Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2 } from "lucide-react";
 import clsx from "clsx";
 
 interface Peer {
@@ -11,6 +11,7 @@ interface Peer {
   port: number;
   last_seen: number;
   is_trusted: boolean;
+  is_manual?: boolean;
 }
 
 function App() {
@@ -90,6 +91,17 @@ function App() {
           await invoke("add_manual_peer", { ip: input });
       } catch (e) {
           alert("Failed to add peer: " + String(e));
+      }
+  };
+
+  const deletePeer = async (id: string) => {
+      if (!confirm("Are you sure you want to forget this device?")) return;
+      try {
+          await invoke("delete_peer", { peerId: id });
+          // Optimistic update
+          setPeers((prev) => prev.filter(p => p.id !== id));
+      } catch (e) {
+          alert("Failed to delete peer: " + String(e));
       }
   };
 
@@ -193,6 +205,14 @@ function App() {
                                         <span>Connected</span>
                                     </div>
                                 )}
+                                {/* Delete Button */}
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); deletePeer(peer.id); }}
+                                    className="p-1.5 text-neutral-500 hover:text-red-400 bg-neutral-700/50 hover:bg-neutral-700 rounded-md transition-colors"
+                                    title="Forget Device"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
                             </div>
                         </div>
                     ))

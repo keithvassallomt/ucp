@@ -6,4 +6,6 @@ pub struct Peer {
     pub hostname: String,
     pub last_seen: u64,
     pub is_trusted: bool,
+    #[serde(default)]
+    pub is_manual: bool,
 } // timestamp for pruning old peers
