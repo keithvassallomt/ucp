@@ -102,7 +102,7 @@ async fn initiate_pairing(
 
     // 2. Start SPAKE2
     let (spake_state, msg) =
-        crypto::start_spake2(&pin, "initiator", "responder").map_err(|e| e.to_string())?;
+        crypto::start_spake2(&pin, "ucp-connect", "ucp-connect").map_err(|e| e.to_string())?;
 
     // 3. Store state
     {
@@ -158,7 +158,7 @@ async fn respond_to_pairing(
 
     // 2. Start SPAKE2 (Responder Identity)
     let (spake_state, msg_b) =
-        crypto::start_spake2(&pin, "responder", "initiator").map_err(|e| e.to_string())?;
+        crypto::start_spake2(&pin, "ucp-connect", "ucp-connect").map_err(|e| e.to_string())?;
 
     // 3. Finish Handshake to get Session Key
     let session_key = crypto::finish_spake2(spake_state, &request_msg)
