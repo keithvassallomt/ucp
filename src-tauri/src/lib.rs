@@ -489,6 +489,7 @@ pub fn run() {
             app.manage(transport.clone());
 
             // Start Listening
+            let transport_inside = transport.clone();
             transport.start_listening(move |data, addr| {
                 println!("Received {} bytes from {}", data.len(), addr);
 
@@ -637,6 +638,18 @@ pub fn run() {
                                                 save_network_name(listener_handle.app_handle(), &network_name);
                                             }
 
+                                            // 2b. Re-register mDNS to broadcast new Network Name
+                                            {
+                                                let device_id = listener_state.local_device_id.lock().unwrap().clone();
+                                                let port = transport_inside.local_addr().map(|a| a.port()).unwrap_or(0);
+                                                if port > 0 {
+                                                     if let Some(discovery) = listener_state.discovery.lock().unwrap().as_mut() {
+                                                          println!("Re-registering mDNS with new network name: {}", network_name);
+                                                          let _ = discovery.register(&device_id, &network_name, port);
+                                                     }
+                                                }
+                                            }
+
                                             // 3. Merge Known Peers (AND Update Runtime)
                                             {
                                                 let mut kp_lock = listener_state.known_peers.lock().unwrap();
@@ -708,6 +721,7 @@ pub fn run() {
             get_peers,
             add_manual_peer,
             start_pairing,
+            respond_to_pairing,
             delete_peer,
             get_network_name
         ])

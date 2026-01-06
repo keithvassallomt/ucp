@@ -24,6 +24,14 @@ impl Discovery {
         network_name: &str,
         port: u16,
     ) -> Result<(), Box<dyn Error>> {
+        // If already registered, unregister first
+        if let Some(fullname) = &self.registered_service {
+            println!("Unregistering old service: {}", fullname);
+            let _ = self.daemon.unregister(fullname);
+            // Short pause to ensure unregistration propagates locally if needed
+            // std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
         // Get the local IP address
         let ip = local_ip()?;
 
