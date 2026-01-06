@@ -14,7 +14,7 @@ use rand::Rng;
 use state::AppState;
 use storage::{
     load_cluster_key, load_device_id, load_known_peers, load_network_name, load_network_pin,
-    save_cluster_key, save_device_id, save_known_peers, save_network_name,
+    save_cluster_key, save_device_id, save_known_peers, save_network_name, save_network_pin,
 };
 use tauri::{Emitter, Manager};
 use transport::Transport;
@@ -429,10 +429,12 @@ pub fn run() {
                                                                  if let Ok(encrypted_ck) = crypto::encrypt(&session_key_arr, &cluster_key).map_err(|e| e.to_string()) {
                                                                      let known_peers = listener_state.known_peers.lock().unwrap().values().cloned().collect();
                                                                      let network_name = listener_state.network_name.lock().unwrap().clone();
+                                                                     let network_pin = listener_state.network_pin.lock().unwrap().clone();
                                                                      let welcome = Message::Welcome {
                                                                          encrypted_cluster_key: encrypted_ck,
                                                                          known_peers,
-                                                                         network_name: network_name.clone()
+                                                                         network_name: network_name.clone(),
+                                                                         network_pin
                                                                      };
                                                                      if let Ok(welcome_data) = serde_json::to_vec(&welcome) {
                                                                          let _ = transport_inside.send_message(addr, &welcome_data).await;
@@ -483,7 +485,7 @@ pub fn run() {
                                     }
                                 }
                             }
-                            Message::Welcome { encrypted_cluster_key, known_peers, network_name } => {
+                            Message::Welcome { encrypted_cluster_key, known_peers, network_name, network_pin } => {
                                 println!("Received WELCOME from {}", addr);
                                 let session_key = {
                                     let sessions = listener_state.handshake_sessions.lock().unwrap();
@@ -495,15 +497,20 @@ pub fn run() {
                                         sk_arr.copy_from_slice(&sk);
                                         match crypto::decrypt(&sk_arr, &encrypted_cluster_key).map_err(|e| e.to_string()) {
                                             Ok(cluster_key) => {
-                                                println!("Joined Network: {}", network_name);
+                                                println!("Joined Network: {} (PIN: {})", network_name, network_pin);
                                                 // Save Keys & Name
                                                 {
                                                     let mut ck = listener_state.cluster_key.lock().unwrap();
                                                     *ck = Some(cluster_key.clone());
                                                     save_cluster_key(listener_handle.app_handle(), &cluster_key);
+                                                    
                                                     let mut nn = listener_state.network_name.lock().unwrap();
                                                     *nn = network_name.clone();
                                                     save_network_name(listener_handle.app_handle(), &network_name);
+                                                    
+                                                    let mut np = listener_state.network_pin.lock().unwrap();
+                                                    *np = network_pin.clone();
+                                                    save_network_pin(listener_handle.app_handle(), &network_pin);
                                                 }
                                                 // Re-register mDNS
                                                 let device_id = listener_state.local_device_id.lock().unwrap().clone();

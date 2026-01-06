@@ -45,7 +45,14 @@ function App() {
     // Fetch Network Name & PIN
     invoke<string>("get_network_name").then(name => setMyNetworkName(name));
     invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
+  }, []);
 
+  // Ensure PIN matches the displayed Network Name
+  useEffect(() => {
+    invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
+  }, [myNetworkName]);
+
+  useEffect(() => {
     const unlistenPeer = listen<Peer>("peer-update", (event) => {
       console.log("Peer Update Received:", event.payload);
       // If we just paired, re-fetch network name/pin as it might have changed!
@@ -133,6 +140,11 @@ function App() {
   const unknownPeers: Peer[] = [];
 
   untrustedPeers.forEach(p => {
+      // Don't show my own network in "Nearby Networks"
+      if (p.network_name && p.network_name === myNetworkName) {
+           return;
+      }
+
       if (p.network_name) {
           if (!otherNetworks[p.network_name]) otherNetworks[p.network_name] = [];
           otherNetworks[p.network_name].push(p);
