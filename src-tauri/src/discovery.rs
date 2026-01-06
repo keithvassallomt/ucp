@@ -18,7 +18,12 @@ impl Discovery {
         })
     }
 
-    pub fn register(&mut self, device_id: &str, port: u16) -> Result<(), Box<dyn Error>> {
+    pub fn register(
+        &mut self,
+        device_id: &str,
+        network_name: &str,
+        port: u16,
+    ) -> Result<(), Box<dyn Error>> {
         // Get the local IP address
         let ip = local_ip()?;
 
@@ -27,7 +32,11 @@ impl Discovery {
         let hostname = format!("{}.local.", device_id);
 
         // Properties can be used to send public key fingerprint or other metadata
-        let properties = [("version", "0.1.0"), ("id", device_id)];
+        let properties = [
+            ("version", "0.1.0"),
+            ("id", device_id),
+            ("n", network_name), // n = network name
+        ];
 
         let service_info = ServiceInfo::new(
             SERVICE_TYPE,

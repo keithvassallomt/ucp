@@ -13,8 +13,8 @@ use protocol::Message;
 use rand::Rng;
 use state::AppState;
 use storage::{
-    load_cluster_key, load_device_id, load_known_peers, save_cluster_key, save_device_id,
-    save_known_peers,
+    load_cluster_key, load_device_id, load_known_peers, load_network_name, save_cluster_key,
+    save_device_id, save_known_peers, save_network_name,
 };
 use tauri::{Emitter, Manager};
 use transport::Transport;
@@ -57,8 +57,20 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
+fn get_network_name(state: tauri::State<AppState>) -> String {
+    state.network_name.lock().unwrap().clone()
+}
+
+#[tauri::command]
 fn get_peers(state: tauri::State<AppState>) -> std::collections::HashMap<String, Peer> {
     state.get_peers()
+}
+
+#[tauri::command]
+fn get_local_ip() -> String {
+    local_ip_address::local_ip()
+        .map(|ip| ip.to_string())
+        .unwrap_or_else(|_| "127.0.0.1".to_string())
 }
 
 #[tauri::command]
@@ -95,10 +107,10 @@ async fn add_manual_peer(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
-        is_trusted: false,
+        is_trusted: true,
         is_manual: true,
+        network_name: None, // Manual peers don't annouce it via IP add
     };
-
     state.add_peer(peer.clone());
     
     // Save to known peers
@@ -145,7 +157,7 @@ async fn delete_peer(
 }
 
 #[tauri::command]
-async fn initiate_pairing(
+async fn start_pairing(
     peer_id: String,
     pin: String,
     state: tauri::State<'_, AppState>,
@@ -274,10 +286,15 @@ async fn respond_to_pairing(
         let peers = state.peers.lock().unwrap();
         peers.values().cloned().collect()
     };
+    
+    let current_network_name = {
+        state.network_name.lock().unwrap().clone()
+    };
 
     let welcome_struct = Message::Welcome {
         encrypted_cluster_key,
         known_peers,
+        network_name: current_network_name,
     };
     let data_welcome = serde_json::to_vec(&welcome_struct).map_err(|e| e.to_string())?;
 
@@ -319,6 +336,13 @@ async fn respond_to_pairing(
                 } else {
                     !runtime.contains_key(&target_id)
                 }
+            },
+            network_name: {
+               // If we are responding, we assign OUR network name to them? 
+               // No, we adopt them into OUR network.
+               // But this Peer struct is "who they represent".
+               // If they joined us, they belong to our network now.
+               state.network_name.lock().unwrap().clone().into()
             },
         };
         kp_lock.insert(target_id.clone(), p.clone());
@@ -363,14 +387,6 @@ pub fn run() {
                 *kp_lock = load_known_peers(app_handle);
                 
                 // Load known peers into RUNTIME state too! (Fixes UI not showing known peers on restart)
-                // BUT: Only show Manual peers initially. mDNS peers will show up when discovered.
-                let mut runtime_peers = state.peers.lock().unwrap();
-                for peer in kp_lock.values() {
-                     if peer.is_manual {
-                        runtime_peers.insert(peer.id.clone(), peer.clone());
-                     }
-                }
-
                 // 3. Load Device ID
                 let mut device_id = load_device_id(app_handle);
                 if device_id.is_empty() {
@@ -382,11 +398,15 @@ pub fn run() {
                     println!("Loaded Device ID: {}", device_id);
                 }
                 *state.local_device_id.lock().unwrap() = device_id.clone();
+                
+                // 3b. Load Network Name (for mDNS)
+                let network_name = load_network_name(app_handle);
+                *state.network_name.lock().unwrap() = network_name.clone();
 
                 // 4. Register Discovery
                 let mut discovery = Discovery::new().expect("Failed to initialize discovery");
                 discovery
-                    .register(&device_id, port)
+                    .register(&device_id, &network_name, port)
                     .expect("Failed to register service");
                 let receiver = discovery.browse().expect("Failed to browse");
                 *state.discovery.lock().unwrap() = Some(discovery);
@@ -416,6 +436,10 @@ pub fn run() {
                                         kp.contains_key(&id)
                                     };
 
+                                    let network_name_prop = info
+                                        .get_property_val_str("n")
+                                        .map(|s| s.to_string());
+
                                     let peer = Peer {
                                         id: id.clone(),
                                         ip: ip.to_string().parse().unwrap_or(std::net::IpAddr::V4(
@@ -428,7 +452,8 @@ pub fn run() {
                                             .unwrap_or_default()
                                             .as_secs(),
                                         is_trusted: is_known,
-                                        is_manual: false,
+                                        is_manual: false, // Discovered via mDNS
+                                        network_name: network_name_prop,
                                     };
 
                                     d_state.add_peer(peer.clone());
@@ -573,15 +598,17 @@ pub fn run() {
                         Message::Welcome {
                             encrypted_cluster_key,
                             known_peers,
+                            network_name,
                         } => {
                             println!("Received WELCOME from {}", addr);
-                            // Retrieve Session Key
-                            let session_key_opt = {
-                                let mut sessions = listener_state.handshake_sessions.lock().unwrap();
-                                sessions.remove(&addr.to_string())
+                            // Decrypt Cluster Key
+                            // ... (session key logic)
+                            let key_lookup = {
+                                let sessions = listener_state.handshake_sessions.lock().unwrap();
+                                sessions.get(&addr.to_string()).cloned()
                             };
 
-                            if let Some(session_key) = session_key_opt {
+                            if let Some(session_key) = key_lookup {
                                 let mut session_key_arr = [0u8; 32];
                                 if session_key.len() == 32 {
                                     session_key_arr.copy_from_slice(&session_key);
@@ -589,15 +616,22 @@ pub fn run() {
                                     // Decrypt Cluster Key
                                     match crypto::decrypt(&session_key_arr, &encrypted_cluster_key) {
                                         Ok(cluster_key) => {
-                                            println!("Cluster Key Decrypted! Joining Network...");
+                                            println!("Cluster Key Decrypted! Joining Network: {}", network_name);
                                             // 1. Save Cluster Key
                                             {
                                                 let mut ck = listener_state.cluster_key.lock().unwrap();
                                                 *ck = Some(cluster_key.clone());
                                                 save_cluster_key(listener_handle.app_handle(), &cluster_key);
                                             }
+                                            
+                                            // 2. Adopt Network Name
+                                            {
+                                                let mut nn = listener_state.network_name.lock().unwrap();
+                                                *nn = network_name.clone();
+                                                save_network_name(listener_handle.app_handle(), &network_name);
+                                            }
 
-                                            // 2. Merge Known Peers (AND Update Runtime)
+                                            // 3. Merge Known Peers (AND Update Runtime)
                                             {
                                                 let mut kp_lock = listener_state.known_peers.lock().unwrap();
                                                 let mut runtime_peers = listener_state.peers.lock().unwrap();
@@ -664,22 +698,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
+            get_local_ip,
             get_peers,
-            initiate_pairing,
-            respond_to_pairing,
             add_manual_peer,
-            delete_peer
+            start_pairing,
+            delete_peer,
+            get_network_name
         ])
-        .build(tauri::generate_context!())
-        .expect("error while running tauri application")
-        .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                let state = app_handle.state::<AppState>();
-                let mut d_lock = state.discovery.lock().unwrap();
-                if let Some(d) = d_lock.take() {
-                    drop(d);
-                }
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

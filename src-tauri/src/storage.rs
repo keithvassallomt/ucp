@@ -1,7 +1,52 @@
 use crate::peer::Peer;
+use names::Generator;
 use std::collections::HashMap;
 use std::fs;
 use tauri::{path::BaseDirectory, AppHandle, Manager};
+
+pub fn load_network_name(app: &AppHandle) -> String {
+    let path_resolver = app.path();
+    let path = match path_resolver.resolve("network_name", BaseDirectory::AppConfig) {
+        Ok(p) => p,
+        Err(_) => return String::from("unknown-network"),
+    };
+
+    if path.exists() {
+        if let Ok(name) = fs::read_to_string(&path) {
+            if !name.trim().is_empty() {
+                println!("Loaded Network Name: {}", name);
+                return name;
+            }
+        }
+    }
+
+    // Generate new name if missing
+    let mut generator = Generator::default();
+    let new_name = generator
+        .next()
+        .unwrap_or_else(|| "unnamed-network".to_string());
+
+    // Save it
+    save_network_name(app, &new_name);
+    println!("Generated new Network Name: {}", new_name);
+    new_name
+}
+
+pub fn save_network_name(app: &AppHandle, name: &str) {
+    let path_resolver = app.path();
+    let path = match path_resolver.resolve("network_name", BaseDirectory::AppConfig) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to resolve network_name path: {}", e);
+            return;
+        }
+    };
+
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let _ = fs::write(path, name);
+}
 
 pub fn load_cluster_key(app: &AppHandle) -> Option<Vec<u8>> {
     let path_resolver = app.path();

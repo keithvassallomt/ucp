@@ -6,6 +6,10 @@ pub struct Peer {
     pub hostname: String,
     pub last_seen: u64,
     pub is_trusted: bool,
+    // Discovery method
     #[serde(default)]
     pub is_manual: bool,
+    // Network Name (discovered via mDNS)
+    #[serde(default)]
+    pub network_name: Option<String>,
 } // timestamp for pruning old peers

@@ -21,6 +21,8 @@ pub struct AppState {
     pub discovery: Arc<Mutex<Option<crate::discovery::Discovery>>>,
     // Last Clipboard Content (for deduplication and loop prevention)
     pub last_clipboard_content: Arc<Mutex<String>>,
+    // Human Readable Network Name
+    pub network_name: Arc<Mutex<String>>,
 }
 
 impl AppState {
@@ -34,6 +36,7 @@ impl AppState {
             local_device_id: Arc::new(Mutex::new(String::new())),
             discovery: Arc::new(Mutex::new(None)),
             last_clipboard_content: Arc::new(Mutex::new(String::new())),
+            network_name: Arc::new(Mutex::new(String::new())),
         }
     }
 
