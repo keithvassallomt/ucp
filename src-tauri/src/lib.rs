@@ -671,6 +671,33 @@ pub fn run() {
                                                 save_known_peers(listener_handle.app_handle(), &kp_lock);
                                             }
 
+                                            // 4. Trust the Gateway (Sender)
+                                            {
+                                                let mut runtime_peers = listener_state.peers.lock().unwrap();
+                                                let sender_ip = addr.ip();
+                                                let mut gateway_id = None;
+
+                                                for (id, peer) in runtime_peers.iter_mut() {
+                                                    if peer.ip == sender_ip {
+                                                        peer.is_trusted = true;
+                                                        peer.network_name = Some(network_name.clone());
+                                                        gateway_id = Some(id.clone());
+                                                        // Update UI immediately for this peer
+                                                        let _ = listener_handle.emit("peer-update", &*peer);
+                                                        println!("Marked Gateway {} as Trusted", id);
+                                                        break;
+                                                    }
+                                                }
+                                                
+                                                if let Some(gid) = gateway_id {
+                                                     if let Some(peer) = runtime_peers.get(&gid) {
+                                                         let mut kp_lock = listener_state.known_peers.lock().unwrap();
+                                                         kp_lock.insert(gid, peer.clone());
+                                                         save_known_peers(listener_handle.app_handle(), &kp_lock);
+                                                     }
+                                                }
+                                            }
+
                                             println!("Successfully joined network!");
                                         }
                                         Err(e) => eprintln!("Failed to decrypt Cluster Key: {}", e),
