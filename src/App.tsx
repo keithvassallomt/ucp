@@ -76,10 +76,16 @@ function App() {
         setPeers((prev) => prev.filter(p => p.id !== event.payload));
     });
 
+    const unlistenReset = listen("network-reset", () => {
+        alert("You have been removed from the network.\nThe application will now reset.");
+        window.location.reload();
+    });
+
     return () => {
       unlistenPeer.then((f) => f());
       unlistenClipboard.then((f) => f());
       unlistenRemove.then((f) => f());
+      unlistenReset.then((f) => f());
     };
   }, []); // Stable listener!
 

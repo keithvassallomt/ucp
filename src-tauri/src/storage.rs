@@ -232,3 +232,19 @@ pub fn save_network_pin(app: &AppHandle, pin: &str) {
     }
     let _ = fs::write(path, pin);
 }
+// Helper to reset network state (Self-Destruct/Kick)
+pub fn reset_network_state(app: &AppHandle) {
+    let path_resolver = app.path();
+    let config_files = ["cluster_key", "network_name", "network_pin", "known_peers"];
+
+    for filename in config_files {
+        match path_resolver.resolve(filename, BaseDirectory::AppConfig) {
+            Ok(path) => {
+                if path.exists() {
+                    let _ = fs::remove_file(path);
+                }
+            }
+            Err(e) => eprintln!("Failed to resolve path for {}: {}", filename, e),
+        }
+    }
+}

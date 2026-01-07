@@ -20,4 +20,6 @@ pub enum Message {
     },
     // Gossip: Broadcast new peer to known peers
     PeerDiscovery(crate::peer::Peer),
+    // Broadcast removal of a peer (kick/leave)
+    PeerRemoval(String), // Payload is device_id
 }

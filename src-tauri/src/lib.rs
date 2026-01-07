@@ -15,6 +15,7 @@ use state::AppState;
 use storage::{
     load_cluster_key, load_device_id, load_known_peers, load_network_name, load_network_pin,
     save_cluster_key, save_device_id, save_known_peers, save_network_name, save_network_pin,
+    reset_network_state,
 };
 use tauri::{Emitter, Manager};
 use transport::Transport;
@@ -141,6 +142,28 @@ async fn delete_peer(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    // 0. Broadcast Removal (Kick) to Network
+    let removal_msg = Message::PeerRemoval(peer_id.clone());
+    let data = serde_json::to_vec(&removal_msg).unwrap_or_default();
+    
+    // We can allow gossip_peer or manual iteration.
+    // Manual iteration is safer to ensure it hits everyone including the target.
+    let peers_snapshot = state.get_peers();
+    for (id, p) in peers_snapshot.iter() {
+         // Don't gossip to self (obv)
+         if *id == state.local_device_id.lock().unwrap().clone() {
+             continue;
+         }
+         
+         let addr = std::net::SocketAddr::new(p.ip, p.port);
+         let transport_clone = transport.clone();
+         let data_vec = data.clone();
+         
+         tauri::async_runtime::spawn(async move {
+             let _ = transport_clone.send_message(addr, &data_vec).await;
+         });
+    }
+
     // 1. Remove from Known Peers
     {
         let mut kp = state.known_peers.lock().unwrap();
@@ -285,11 +308,6 @@ pub fn run() {
                                         continue;
                                     }
 
-                                    let is_known = {
-                                        let kp = d_state.known_peers.lock().unwrap();
-                                        kp.contains_key(&id)
-                                    };
-
                                     let network_name_prop = info
                                         .get_property_val_str("n")
                                         .map(|s| s.to_string());
@@ -299,6 +317,10 @@ pub fn run() {
                                     } else {
                                         println!("Discovered peer {} WITHOUT network name (properties: {:?})", id, info.get_properties());
                                     }
+
+                                    // Lock known_peers to prevent race with PairRequest
+                                    let kp = d_state.known_peers.lock().unwrap();
+                                    let is_known = kp.contains_key(&id);
 
                                     let peer = Peer {
                                         id: id.clone(),
@@ -318,6 +340,7 @@ pub fn run() {
 
                                     d_state.add_peer(peer.clone());
                                     let _ = d_handle.emit("peer-update", &peer);
+                                    // Lock drops here
                                 }
                             }
                             mdns_sd::ServiceEvent::ServiceRemoved(_ty, fullname) => {
