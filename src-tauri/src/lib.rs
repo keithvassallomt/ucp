@@ -140,6 +140,7 @@ async fn add_manual_peer(
 async fn delete_peer(
     peer_id: String,
     state: tauri::State<'_, AppState>,
+    transport: tauri::State<'_, Transport>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     // 0. Broadcast Removal (Kick) to Network
@@ -156,7 +157,7 @@ async fn delete_peer(
          }
          
          let addr = std::net::SocketAddr::new(p.ip, p.port);
-         let transport_clone = transport.clone();
+         let transport_clone = (*transport).clone();
          let data_vec = data.clone();
          
          tauri::async_runtime::spawn(async move {
@@ -582,6 +583,42 @@ pub fn run() {
                                      save_known_peers(listener_handle.app_handle(), &kp_lock);
                                      listener_state.add_peer(peer.clone());
                                      let _ = listener_handle.emit("peer-update", &peer);
+                                }
+                            }
+                            Message::PeerRemoval(target_id) => {
+                                println!("Received PeerRemoval for {}", target_id);
+                                let local_id = listener_state.local_device_id.lock().unwrap().clone();
+                                
+                                if target_id == local_id {
+                                    println!("I have been removed from the network! resetting state...");
+                                    // 1. Reset Config
+                                    reset_network_state(listener_handle.app_handle());
+                                    
+                                    // 2. Clear Runtime State
+                                    {
+                                        let mut kp = listener_state.known_peers.lock().unwrap();
+                                        kp.clear();
+                                        let mut peers = listener_state.peers.lock().unwrap();
+                                        peers.clear();
+                                        let mut ck = listener_state.cluster_key.lock().unwrap();
+                                        *ck = None;
+                                    }
+                                    
+                                    // 3. Notify Frontend
+                                    let _ = listener_handle.emit("network-reset", ());
+                                } else {
+                                    // Remove the peer
+                                    {
+                                        let mut kp = listener_state.known_peers.lock().unwrap();
+                                        if kp.remove(&target_id).is_some() {
+                                            save_known_peers(listener_handle.app_handle(), &kp);
+                                        }
+                                    }
+                                    {
+                                        let mut peers = listener_state.peers.lock().unwrap();
+                                        peers.remove(&target_id);
+                                    }
+                                    let _ = listener_handle.emit("peer-remove", &target_id);
                                 }
                             }
                         }
