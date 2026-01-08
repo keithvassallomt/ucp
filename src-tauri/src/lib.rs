@@ -342,7 +342,7 @@ pub fn run() {
                 // 3. Load Device ID
                 let mut device_id = load_device_id(app_handle);
                 if device_id.is_empty() {
-                    let run_id: u32 = rand::rng().random();
+                    let run_id: u32 = rand::thread_rng().gen();
                     device_id = format!("ucp-{}", run_id);
                     save_device_id(app_handle, &device_id);
                     println!("Generated new Device ID: {}", device_id);
