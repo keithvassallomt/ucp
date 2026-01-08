@@ -207,7 +207,7 @@ pub fn load_network_pin(app: &AppHandle) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let pin: String = (0..6)
         .map(|_| {
-            let idx = rand::rng().random_range(0..CHARSET.len());
+            let idx = rand::thread_rng().gen_range(0..CHARSET.len());
             CHARSET[idx] as char
         })
         .collect();
