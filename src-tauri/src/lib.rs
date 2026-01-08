@@ -410,11 +410,13 @@ pub fn run() {
                                     let is_known = kp.contains_key(&id);
 
                                     // Extract hostname from property or fallback to mDNS hostname
-                                    let hostname_prop = info
-                                        .get_property_val_str("h")
+                                    let h_prop = info.get_property_val_str("h");
+                                    let hostname_prop = h_prop
                                         .or_else(|| info.get_property_val_str("hostname"))
                                         .map(|s| s.to_string())
                                         .unwrap_or_else(|| info.get_hostname().to_string());
+
+                                    println!("[Discovery] Peer {} resolved. 'h' prop: {:?}, Final hostname: {}", id, h_prop, hostname_prop);
 
                                     let peer = Peer {
                                         id: id.clone(),
@@ -440,6 +442,7 @@ pub fn run() {
                             mdns_sd::ServiceEvent::ServiceRemoved(_ty, fullname) => {
                                 let id =
                                     fullname.split('.').next().unwrap_or("unknown").to_string();
+                                println!("[Discovery] Service Removed: {} -> ID: {}", fullname, id);
                                 {
                                     let mut peers = d_state.peers.lock().unwrap();
                                     peers.remove(&id);
@@ -733,6 +736,17 @@ pub fn run() {
             get_device_id,
             get_hostname
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle: &tauri::AppHandle, event: tauri::RunEvent| {
+        match event {
+            tauri::RunEvent::Exit => {
+                println!("App exiting, dropping discovery service...");
+                let state = app_handle.state::<AppState>();
+                let mut discovery = state.discovery.lock().unwrap();
+                *discovery = None; // Explicitly drop to trigger unregister
+            }
+            _ => {}
+        }
+    });
 }

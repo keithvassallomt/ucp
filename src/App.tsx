@@ -483,9 +483,9 @@ export default function App() {
         </Card>
 
         {/* Content */}
-        <div className="mt-5">
+        <div className="mt-2 flex-1 min-h-0 overflow-hidden">
            {/* In the design, this was a grid with sidebar. For simplicity we can just render the Main Panel full width for now, or match the sidebar structure if desired. Let's keep it simple full width since the sidebar was mostly Demo Controls */}
-           <div className="no-drag">
+           <div className="no-drag h-full">
              {activeView === "devices" ? (
                <DevicesView
                  isConnected={isConnected}
@@ -592,9 +592,9 @@ function DevicesView({
 }) {
 
   return (
-    <div className="space-y-5">
-      {/* My device / identity */}
-      <Card className="p-5">
+    <div className="flex h-full flex-col gap-3">
+      {/* My device / identity - Fixed Height */}
+      <Card className="shrink-0 p-4">
         <SectionHeader
           icon={<ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
           title={`My Device (${myHostname})`}
@@ -603,18 +603,18 @@ function DevicesView({
             <Badge tone={isConnected ? "good" : "warn"}>
               {isConnected ? (
                 <>
-                  <Lock className="h-3.5 w-3.5" /> Trusted cluster
+                  <Lock className="h-3.5 w-3.5" /> Checked
                 </>
               ) : (
                 <>
-                  <Unlock className="h-3.5 w-3.5" /> Not paired
+                  <Unlock className="h-3.5 w-3.5" /> No Peers
                 </>
               )}
             </Badge>
           }
         />
 
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <Field label="My Cluster" value={myNetworkName} mono action={<CopyMini text={myNetworkName} />} />
           <Field
             label="Cluster PIN"
@@ -629,96 +629,114 @@ function DevicesView({
         </div>
       </Card>
 
-      {/* Trusted peers */}
-      <Card className="p-5">
-        <SectionHeader
-          icon={<Lock className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
-          title="My Cluster"
-          subtitle="Devices in your secure cluster."
-          right={
-            <Badge tone="good">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Safe zone
-            </Badge>
-          }
-        />
-
-        {peers.length === 0 ? (
-          <div className="mt-4 rounded-2xl border border-zinc-900/10 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
-            No other devices in this cluster.
-          </div>
-        ) : (
-          <div className="mt-4 space-y-2">
-            {peers.map((p) => (
-              <div
-                key={p.id}
-                className="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5 md:flex-row md:items-center md:justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={clsx("flex h-10 w-10 items-center justify-center rounded-2xl", "bg-emerald-500/15")}>
-                    <Wifi className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{p.hostname || p.id}</div>
-                      <Badge tone="good">online</Badge>
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{p.ip}</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-2">
-                  <Button size="sm" variant="ghost" iconLeft={<Copy className="h-4 w-4" />} onClick={() => navigator.clipboard.writeText(p.id)}>
-                    Copy ID
-                  </Button>
-                  <IconButton label="Kick / Ban" onClick={() => onDeletePeer(p.id)}>
-                    <Trash2 className="h-5 w-5 text-rose-600" />
-                  </IconButton>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {/* Nearby networks */}
-      {nearby.length > 0 && (
-          <Card className="p-5">
+      {/* Main Content Area - Scrollable columns */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 md:grid md:grid-cols-2">
+        
+        {/* Trusted peers */}
+        <Card className="flex flex-col overflow-hidden p-0">
+          <div className="shrink-0 p-4 pb-2">
             <SectionHeader
-              icon={<Unlock className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
-              title="Nearby Clusters"
-              subtitle="Other UCP clusters on your LAN."
+              icon={<Lock className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
+              title="My Cluster"
+              subtitle="Trusted devices."
+              right={
+                <Badge tone="good">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Safe
+                </Badge>
+              }
             />
+          </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-              {nearby.map((n) => (
-                <div key={n.networkName} className="rounded-2xl border border-zinc-900/10 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{n.networkName}</div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-                        {n.devices.map((d) => (
-                          <span key={d.id} className="inline-flex items-center gap-1">
-                            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                             {d.hostname || d.id.substring(0,8) + "..."}
-                          </span>
-                        ))}
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {peers.length === 0 ? (
+              <div className="mt-2 rounded-2xl border border-zinc-900/10 bg-zinc-50 p-4 text-sm text-zinc-700 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
+                No other devices in this cluster.
+              </div>
+            ) : (
+              <div className="mt-2 space-y-2">
+                {peers.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={clsx("flex h-10 w-10 items-center justify-center rounded-2xl", "bg-emerald-500/15")}>
+                        <Wifi className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{p.hostname || p.id}</div>
+                          <Badge tone="good">online</Badge>
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{p.ip}</div>
                       </div>
                     </div>
 
-                    <Button
-                      variant="primary"
-                      iconLeft={<PlusCircle className="h-4 w-4" />}
-                      onClick={() => onJoin(n.networkName)}
-                      className="no-drag"
-                    >
-                      Join
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button size="sm" variant="ghost" iconLeft={<Copy className="h-4 w-4" />} onClick={() => navigator.clipboard.writeText(p.id)}>
+                        Copy ID
+                      </Button>
+                      <IconButton label="Kick / Ban" onClick={() => onDeletePeer(p.id)}>
+                        <Trash2 className="h-5 w-5 text-rose-600" />
+                      </IconButton>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Nearby networks */}
+        <Card className="flex flex-col overflow-hidden p-0">
+          <div className="shrink-0 p-4 pb-2">
+             <SectionHeader
+                icon={<Unlock className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+                title="Nearby Clusters"
+                subtitle="Other UCP clusters."
+              />
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+              {nearby.length === 0 ? (
+                 <div className="mt-2 text-sm text-zinc-500 p-2 text-center italic">
+                    Scanning for nearby devices...
+                 </div>
+              ) : (
+                <div className="mt-2 space-y-3">
+                  {nearby.map((n) => (
+                    <div key={n.networkName} className="rounded-2xl border border-zinc-900/10 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{n.networkName}</div>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              iconLeft={<PlusCircle className="h-4 w-4" />}
+                              onClick={() => onJoin(n.networkName)}
+                              className="no-drag"
+                            >
+                              Join
+                            </Button>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          {n.devices.map((d) => (
+                            <div key={d.id} className="flex items-center gap-2 rounded-xl bg-black/5 p-2 dark:bg-white/5">
+                                <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                                <span className="truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                                   {d.hostname || d.id}
+                                </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </Card>
-      )}
+              )}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
