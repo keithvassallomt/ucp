@@ -391,6 +391,7 @@ export default function App() {
           networkName: name,
           devices: devices.map(d => ({ 
               id: d.id, 
+              hostname: d.hostname,
               // Map backend 'last_seen' to status? current backend removes ancient peers so assume online if present
               status: "online" 
           }))
@@ -405,7 +406,7 @@ export default function App() {
     <div className={clsx(rootThemeClass, "min-h-screen w-full bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.10),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(99,102,241,0.10),transparent_50%)] dark:bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.12),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(244,63,94,0.10),transparent_50%)]")}>
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 md:px-6">
         {/* Custom titlebar drag region */}
-        <div className="drag-region h-[30px] w-full rounded-t-3xl" />
+        <div className="drag-region h-[10px] w-full rounded-t-3xl" />
 
         {/* Header */}
         <Card className="no-drag overflow-hidden">
