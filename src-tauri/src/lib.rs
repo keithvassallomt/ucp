@@ -1028,11 +1028,10 @@ pub fn run() {
                     {
                         let peers = prune_state.get_peers();
                         for (id, p) in peers {
-                            // Only prune UNTRUSTED peers (Nearby Clusters)
-                            // Trusted peers we might want to keep as "Offline" (future work)
-                            if !p.is_trusted && (now - p.last_seen > timeout) {
+                            // Prune ANY peer that hasn't been seen in timeout seconds
+                            if now - p.last_seen > timeout {
                                 println!("Pruning stale peer: {} ({}) - Last seen {}s ago", p.hostname, id, now - p.last_seen);
-                                params_to_remove.push(id);
+                                params_to_remove.push((id, p.is_trusted));
                             }
                         }
                     }
@@ -1041,9 +1040,16 @@ pub fn run() {
                          let mut peers_lock = prune_state.peers.lock().unwrap();
                          let mut kp_lock = prune_state.known_peers.lock().unwrap();
                          
-                         for id in params_to_remove {
+                         for (id, was_trusted) in params_to_remove {
+                             // Always remove from RUNTIME peers (UI)
                              peers_lock.remove(&id);
-                             kp_lock.remove(&id);
+
+                             // If Untrusted, forget them completely.
+                             // If Trusted, KEEP them in known_peers (Reverse Discovery)
+                             if !was_trusted {
+                                 kp_lock.remove(&id);
+                             }
+                             
                              let _ = prune_handle.emit("peer-remove", &id);
                          }
                          save_known_peers(prune_handle.app_handle(), &kp_lock);
