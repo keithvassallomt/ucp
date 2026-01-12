@@ -774,6 +774,17 @@ pub fn run() {
                                      // If we don't know them at all, reply!
                                      if !kp_lock.contains_key(&peer.id) {
                                          should_reply = true;
+                                     } else {
+                                         // If we DO know them, preserve OUR trust state!
+                                         // The heartbeat usually sends is_trusted: false (self-report), 
+                                         // but we shouldn't downgrade a trusted peer just because they said so.
+                                         if let Some(existing) = kp_lock.get(&peer.id) {
+                                             peer.is_trusted = existing.is_trusted;
+                                             // Also preserve network name if the heartbeat didn't provide one (though it usually does)
+                                             if peer.network_name.is_none() {
+                                                  peer.network_name = existing.network_name.clone();
+                                             }
+                                         }
                                      }
                                      
                                      // Insert the Real Peer (Update info even if known)
