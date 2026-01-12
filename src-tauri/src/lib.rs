@@ -412,7 +412,11 @@ fn perform_factory_reset(app_handle: &tauri::AppHandle, state: &AppState, port: 
             // Since our network_name changes below, they will rightfully be Foreign.
         }
         let mut ck = state.cluster_key.lock().unwrap();
-        *ck = None;
+        // Generate new Cluster Key for the new network
+        let mut new_key = [0u8; 32];
+        rand::thread_rng().fill(&mut new_key);
+        *ck = Some(new_key.to_vec());
+        save_cluster_key(app_handle, &new_key);
         
         // Clear Handshake State
         state.pending_handshakes.lock().unwrap().clear();
@@ -467,7 +471,15 @@ pub fn run() {
 
                 // 1. Load Cluster Key
                 let mut ck_lock = state.cluster_key.lock().unwrap();
-                *ck_lock = load_cluster_key(app_handle);
+                if let Some(key) = load_cluster_key(app_handle) {
+                    *ck_lock = Some(key);
+                } else {
+                    println!("No Cluster Key found. Generating new one...");
+                    let mut new_key = [0u8; 32];
+                    rand::thread_rng().fill(&mut new_key);
+                    save_cluster_key(app_handle, &new_key);
+                    *ck_lock = Some(new_key.to_vec());
+                }
 
                 // 2. Load Known Peers
                 let mut kp_lock = state.known_peers.lock().unwrap();
