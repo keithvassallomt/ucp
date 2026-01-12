@@ -750,14 +750,52 @@ pub fn run() {
                             }
                             Message::PeerDiscovery(mut peer) => {
                                 println!("Received PeerDiscovery for {}", peer.hostname);
+                                // TRUST THE PACKET SOURCE for IP/Port (fixes 0.0.0.0 issue)
+                                peer.ip = addr.ip();
+                                peer.port = addr.port();
                                 peer.is_manual = true; 
                                 {
                                      let mut kp_lock = listener_state.known_peers.lock().unwrap();
+                                     // If we don't know them, OR if we only know them as a manual placeholder...
+                                     // Check for placeholder? ID is "manual-IP". Real ID is UUID.
+                                     // If we have a manual placeholder for this IP, remove it.
+                                     let manual_id = format!("manual-{}", peer.ip);
+                                     if kp_lock.contains_key(&manual_id) {
+                                         println!("Replacing manual placeholder {} with real peer {}", manual_id, peer.id);
+                                         kp_lock.remove(&manual_id);
+                                         listener_state.peers.lock().unwrap().remove(&manual_id);
+                                         let _ = listener_handle.emit("peer-remove", &manual_id);
+                                     }
+                                     
+                                     // Insert the Real Peer
                                      kp_lock.insert(peer.id.clone(), peer.clone());
                                      save_known_peers(listener_handle.app_handle(), &kp_lock);
                                      listener_state.add_peer(peer.clone());
                                      let _ = listener_handle.emit("peer-update", &peer);
                                 }
+                                
+                                // Send OUR info back so they can update their placeholder!
+                                let local_id = listener_state.local_device_id.lock().unwrap().clone();
+                                let hostname = hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or("Unknown".to_string());
+                                
+                                let my_peer = Peer {
+                                    id: local_id,
+                                    // payload IP is 0.0.0.0 if bound to all, but receiver will fix it using addr.ip() as above!
+                                    ip: transport_inside.local_addr().unwrap().ip(),
+                                    port: transport_inside.local_addr().unwrap().port(),
+                                    hostname,
+                                    last_seen: 0,
+                                    is_trusted: false, // We aren't trusted yet
+                                    is_manual: true,
+                                    network_name: Some(listener_state.network_name.lock().unwrap().clone()),
+                                };
+                                
+                                let msg = Message::PeerDiscovery(my_peer);
+                                let data = serde_json::to_vec(&msg).unwrap_or_default();
+                                // Send back to sender
+                                tauri::async_runtime::spawn(async move {
+                                    let _ = transport_inside.send_message(addr, &data).await;
+                                });
                             }
                             Message::PeerRemoval(target_id) => {
                                 println!("Received PeerRemoval for {}", target_id);
