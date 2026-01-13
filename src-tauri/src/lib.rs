@@ -53,10 +53,7 @@ fn gossip_peer(
     }
 }
 
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+
 
 #[tauri::command]
 fn get_device_id(state: tauri::State<'_, AppState>) -> String {
@@ -599,7 +596,7 @@ pub fn run() {
             // Clones for transport listener
             let listener_handle = app.handle().clone();
             let listener_state = (*app.state::<AppState>()).clone();
-            let transport_for_ack = transport.clone();
+
 
             app.manage(transport.clone());
 
@@ -960,7 +957,7 @@ pub fn run() {
             );
 
             // Background Task: Heartbeat (Keep Manual Peers Alive)
-            let hb_handle = app.handle().clone();
+
             let hb_state = (*app.state::<AppState>()).clone();
             let hb_transport = transport.clone();
 

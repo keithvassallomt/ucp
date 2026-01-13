@@ -29,7 +29,7 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
             if let Ok(text) = clipboard.get_text() {
                 // Check if this text should be ignored (because we just set it)
                 let should_ignore = {
-                    let mut ignored = IGNORED_TEXT.lock().unwrap();
+                    let ignored = IGNORED_TEXT.lock().unwrap();
                     if let Some(ref ign) = *ignored {
                         if ign == &text {
                             // Match found, clear ignored and skip processing
