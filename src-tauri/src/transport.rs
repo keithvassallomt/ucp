@@ -42,49 +42,53 @@ impl Transport {
     {
         let endpoint = self.endpoint.clone();
         tauri::async_runtime::spawn(async move {
-            println!("Starting transport listener loop...");
+            tracing::info!("Starting transport listener loop...");
             while let Some(conn) = endpoint.accept().await {
-                println!("Transport accepted a connection attempt...");
+                tracing::debug!("Transport accepted a connection attempt...");
                 let connection = conn.await;
                 match connection {
                     Ok(conn) => {
                         let remote_addr = conn.remote_address();
-                        println!("Transport established connection with {}", remote_addr);
+                        tracing::info!("Transport established connection with {}", remote_addr);
                         let on_receive = on_receive.clone();
                         tauri::async_runtime::spawn(async move {
-                            println!("Waiting for bidirectional stream from {}", remote_addr);
+                            tracing::debug!(
+                                "Waiting for bidirectional stream from {}",
+                                remote_addr
+                            );
                             loop {
                                 match conn.accept_bi().await {
                                     Ok((_, mut recv)) => {
-                                        println!("Accepted stream from {}", remote_addr);
+                                        tracing::debug!("Accepted stream from {}", remote_addr);
                                         // Limit 10MB
                                         if let Ok(buf) = recv.read_to_end(1024 * 1024 * 10).await {
-                                            println!(
+                                            tracing::trace!(
                                                 "Read {} bytes from stream from {}",
                                                 buf.len(),
                                                 remote_addr
                                             );
                                             on_receive(buf, remote_addr);
                                         } else {
-                                            eprintln!(
+                                            tracing::error!(
                                                 "Failed to read from stream from {}",
                                                 remote_addr
                                             );
                                         }
                                     }
                                     Err(e) => {
-                                        eprintln!(
+                                        tracing::error!(
                                             "Failed to accept stream from {}: {}",
-                                            remote_addr, e
+                                            remote_addr,
+                                            e
                                         );
                                         break;
                                     }
                                 }
                             }
-                            println!("Stream loop ended for {}", remote_addr);
+                            tracing::debug!("Stream loop ended for {}", remote_addr);
                         });
                     }
-                    Err(e) => eprintln!("Connection handshake failed: {}", e),
+                    Err(e) => tracing::error!("Connection handshake failed: {}", e),
                 }
             }
         });

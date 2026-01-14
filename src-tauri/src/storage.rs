@@ -15,7 +15,7 @@ pub fn load_network_name(app: &AppHandle) -> String {
     if path.exists() {
         if let Ok(name) = fs::read_to_string(&path) {
             if !name.trim().is_empty() {
-                println!("Loaded Network Name: {}", name);
+                tracing::debug!("Loaded Network Name: {}", name);
                 return name;
             }
         }
@@ -29,7 +29,7 @@ pub fn load_network_name(app: &AppHandle) -> String {
 
     // Save it
     save_network_name(app, &new_name);
-    println!("Generated new Network Name: {}", new_name);
+    tracing::info!("Generated new Network Name: {}", new_name);
     new_name
 }
 
@@ -51,7 +51,7 @@ pub fn load_cluster_key(app: &AppHandle) -> Option<Vec<u8>> {
     let path = match path_resolver.resolve("cluster_key.bin", BaseDirectory::AppConfig) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to resolve cluster key path: {}", e);
+            tracing::error!("Failed to resolve cluster key path: {}", e);
             return None;
         }
     };
@@ -63,14 +63,14 @@ pub fn load_cluster_key(app: &AppHandle) -> Option<Vec<u8>> {
     match fs::read(&path) {
         Ok(key) => {
             if key.len() != 32 {
-                eprintln!("Cluster key file has invalid length: {}", key.len());
+                tracing::error!("Cluster key file has invalid length: {}", key.len());
                 return None;
             }
-            println!("Loaded Cluster Key from disk.");
+            tracing::debug!("Loaded Cluster Key from disk.");
             Some(key)
         }
         Err(e) => {
-            eprintln!("Failed to read cluster key file: {}", e);
+            tracing::warn!("Failed to read cluster key file: {}", e);
             None
         }
     }
@@ -91,9 +91,9 @@ pub fn save_cluster_key(app: &AppHandle, key: &[u8]) {
     }
 
     if let Err(e) = fs::write(path, key) {
-        eprintln!("Failed to write cluster key file: {}", e);
+        tracing::error!("Failed to write cluster key file: {}", e);
     } else {
-        println!("Saved Cluster Key to disk.");
+        tracing::debug!("Saved Cluster Key to disk.");
     }
 }
 
@@ -114,16 +114,16 @@ pub fn load_known_peers(app: &AppHandle) -> HashMap<String, Peer> {
     match fs::read_to_string(&path) {
         Ok(content) => match serde_json::from_str::<HashMap<String, Peer>>(&content) {
             Ok(peers) => {
-                println!("Loaded {} known peers from disk at {:?}", peers.len(), path);
+                tracing::info!("Loaded {} known peers from disk at {:?}", peers.len(), path);
                 peers
             }
             Err(e) => {
-                eprintln!("Failed to parse known peers: {}", e);
+                tracing::error!("Failed to parse known peers: {}", e);
                 HashMap::new()
             }
         },
         Err(e) => {
-            eprintln!("Failed to read known peers file: {}", e);
+            tracing::warn!("Failed to read known peers file: {}", e);
             HashMap::new()
         }
     }
@@ -146,13 +146,13 @@ pub fn save_known_peers(app: &AppHandle, peers: &HashMap<String, Peer>) {
     match serde_json::to_string_pretty(peers) {
         Ok(json) => {
             if let Err(e) = fs::write(&path, json) {
-                eprintln!("Failed to write known peers file: {}", e);
+                tracing::error!("Failed to write known peers file: {}", e);
             } else {
-                println!("Saved known peers to disk at {:?}", path);
+                tracing::debug!("Saved known peers to disk at {:?}", path);
             }
         }
         Err(e) => {
-            eprintln!("Failed to serialize known peers: {}", e);
+            tracing::error!("Failed to serialize known peers: {}", e);
         }
     }
 }
@@ -176,7 +176,7 @@ pub fn save_device_id(app: &AppHandle, id: &str) {
     let path = match path_resolver.resolve("device_id", BaseDirectory::AppConfig) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to resolve device_id path: {}", e);
+            tracing::error!("Failed to resolve device_id path: {}", e);
             return;
         }
     };
@@ -212,7 +212,7 @@ pub fn load_network_pin(app: &AppHandle) -> String {
         })
         .collect();
 
-    println!("Generated New Network PIN: {}", pin);
+    tracing::info!("Generated New Network PIN: {}", pin);
     save_network_pin(app, &pin);
     pin
 }
@@ -250,7 +250,7 @@ pub fn reset_network_state(app: &AppHandle) {
                     let _ = fs::remove_file(path);
                 }
             }
-            Err(e) => eprintln!("Failed to resolve path for {}: {}", filename, e),
+            Err(e) => tracing::error!("Failed to resolve path for {}: {}", filename, e),
         }
     }
 }
@@ -339,7 +339,7 @@ pub fn save_settings(app: &AppHandle, settings: &AppSettings) {
     let path = match path_resolver.resolve("settings.json", BaseDirectory::AppConfig) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Failed to resolve settings path: {}", e);
+            tracing::error!("Failed to resolve settings path: {}", e);
             return;
         }
     };

@@ -41,4 +41,8 @@ hostname = "0.4"
 ipnetwork = "0.21.1"
 futures = "0.3.31"
 tauri-plugin-notification = "2.3.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+clap = { version = "4.5", features = ["derive"] }
 

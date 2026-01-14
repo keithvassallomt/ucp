@@ -7,6 +7,75 @@ mod state;
 mod storage;
 mod transport;
 
+use clap::Parser;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[arg(long, default_value = "debug")]
+    log_level: String,
+}
+
+fn init_logging() {
+    // 1. Parse CLI Args (ignoring unknown args that Tauri might use)
+    let args = match Args::try_parse() {
+        Ok(a) => a,
+        Err(_) => {
+            // Keep default if parsing fails (e.g. extra args)
+            Args { log_level: "debug".to_string() }
+        }
+    };
+
+    let level = match args.log_level.to_lowercase().as_str() {
+        "error" => tracing::Level::ERROR,
+        "warn" => tracing::Level::WARN,
+        "info" => tracing::Level::INFO,
+        "debug" => tracing::Level::DEBUG,
+        "trace" => tracing::Level::TRACE,
+        _ => tracing::Level::DEBUG,
+    };
+
+    // 2. Setup Stdout Layer (Colored)
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .with_target(false) // Don't show target (module path) for cleaner output? Or maybe show it.
+        .with_ansi(true)
+        .compact(); // Compact format
+
+    // 3. Setup File Layer (Rolling Daily)
+    // We need a path. Since we are before AppHandle, we can't easily get AppDataDir.
+    // We'll trust XDG or standard paths or just current dir for now?
+    // User requested "sinks".
+    // Better to use `tauri::api::path::app_log_dir`? No, we don't have app handle yet.
+    // Let's us `directories` crate? Or just `.logs` in CWD for development as requested?
+    // "We need each log line to be timestamped, and include hostname."
+    
+    let file_appender = tracing_appender::rolling::daily("logs", "ucp.log");
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_writer(file_appender)
+        .with_ansi(false)
+        .with_target(true);
+
+    // 4. Init Registry
+    let filter = tracing_subscriber::EnvFilter::from_default_env()
+        .add_directive(level.into())
+        // Silence overly verbose crates if needed
+        .add_directive("globset=info".parse().unwrap()); 
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(stdout_layer)
+        .with(file_layer)
+        .init();
+        
+    tracing::info!("Logging initialized. Level: {}, Hostname: {}", level, get_hostname_internal());
+}
+
+fn get_hostname_internal() -> String {
+    hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "Unknown".to_string())
+}
 use discovery::Discovery;
 use peer::Peer;
 use protocol::Message;
@@ -38,14 +107,14 @@ fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str) {
     // 2. Linux Workaround (notify-send)
     #[cfg(target_os = "linux")]
     {
-        println!("[Notification] Linux detected. Attempting notify-send workaround...");
+        tracing::debug!("[Notification] Linux detected. Attempting notify-send workaround...");
         match std::process::Command::new("notify-send")
             .arg(title)
             .arg(body)
             .spawn() 
         {
-            Ok(_) => println!("[Notification] notify-send executed successfully."),
-            Err(e) => eprintln!("[Notification Error] notify-send failed: {}", e),
+            Ok(_) => tracing::debug!("[Notification] notify-send executed successfully."),
+            Err(e) => tracing::error!("[Notification Error] notify-send failed: {}", e),
         }
     }
 }
@@ -56,7 +125,7 @@ fn check_and_notify_leave(app_handle: &tauri::AppHandle, state: &AppState, peer:
         let local_net = state.network_name.lock().unwrap().clone();
         if let Some(remote_net) = &peer.network_name {
             if *remote_net == local_net {
-                println!("[Notification] Device Left: {}", peer.hostname);
+                tracing::info!("[Notification] Device Left: {}", peer.hostname);
                 send_notification(app_handle, "Device Left", &format!("{} has left the cluster", peer.hostname));
             }
         }
@@ -600,6 +669,10 @@ fn perform_factory_reset(app_handle: &tauri::AppHandle, state: &AppState, port: 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    
+    // Initialize Logging
+    init_logging();
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
@@ -703,7 +776,7 @@ pub fn run() {
                                     {
                                         let mut pending = d_state.pending_removals.lock().unwrap();
                                         if pending.remove(&id).is_some() {
-                                            println!("[Discovery] Debounce: Cancelled pending removal for reappearing peer {}", id);
+                                            tracing::debug!("[Discovery] Debounce: Cancelled pending removal for reappearing peer {}", id);
                                         }
                                     }
 
@@ -712,9 +785,9 @@ pub fn run() {
                                         .map(|s| s.to_string());
                                     
                                     if let Some(n) = &network_name_prop {
-                                        println!("Discovered peer {} with network name: {}", id, n);
+                                        tracing::debug!("Discovered peer {} with network name: {}", id, n);
                                     } else {
-                                        println!("Discovered peer {} WITHOUT network name (properties: {:?})", id, info.get_properties());
+                                        tracing::warn!("Discovered peer {} WITHOUT network name (properties: {:?})", id, info.get_properties());
                                     }
 
                                     // Lock known_peers to prevent race with PairRequest
@@ -728,7 +801,7 @@ pub fn run() {
                                         .map(|s| s.to_string())
                                         .unwrap_or_else(|| info.get_hostname().to_string());
 
-                                    println!("[Discovery] Peer {} resolved. 'h' prop: {:?}, Final hostname: {}", id, h_prop, hostname_prop);
+                                    tracing::info!("[Discovery] Peer {} resolved. 'h' prop: {:?}, Final hostname: {}", id, h_prop, hostname_prop);
 
                                     let peer = Peer {
                                         id: id.clone(),
@@ -763,10 +836,10 @@ pub fn run() {
 
                                         if should_notify {
                                             if d_state.settings.lock().unwrap().notifications.device_join {
-                                                println!("[Notification] Triggering 'New Device Found' for discovered peer: {}", peer.hostname);
+                                                tracing::info!("[Notification] Triggering 'Device Joined' for discovered peer: {}", peer.hostname);
                                                 send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname));
                                             } else {
-                                                println!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
+                                                tracing::debug!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
                                             }                                      } else {
                                             // println!("[Notification] suppressed - different cluster name.");
                                         }
@@ -778,7 +851,7 @@ pub fn run() {
                             mdns_sd::ServiceEvent::ServiceRemoved(_ty, fullname) => {
                                 let id =
                                     fullname.split('.').next().unwrap_or("unknown").to_string();
-                                println!("[Discovery] Service Removed: {} -> ID: {}", fullname, id);
+                                tracing::info!("[Discovery] Service Removed: {} -> ID: {}", fullname, id);
                                 
                                 // DEBOUNCE: Don't remove immediately. Wait 3 seconds.
                                 let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_micros() as u64;
@@ -803,7 +876,7 @@ pub fn run() {
                                             
                                             // Proceed with removal
                                             {
-                                                println!("[Discovery] Debounce expired. Removing peer {}", r_id);
+                                                tracing::info!("[Discovery] Debounce expired. Removing peer {}", r_id);
                                                 let mut peers = r_state.peers.lock().unwrap();
                                                 if let Some(peer) = peers.remove(&r_id) {
                                                      drop(peers); // Drop lock before notifying
@@ -812,10 +885,10 @@ pub fn run() {
                                             }
                                             let _ = r_handle.emit("peer-remove", &r_id);
                                         } else {
-                                            println!("[Discovery] Removal Debounce cancelled (Nonce mismatch) for {}", r_id);
+                                            tracing::debug!("[Discovery] Removal Debounce cancelled (Nonce mismatch) for {}", r_id);
                                         }
                                     } else {
-                                        println!("[Discovery] Removal Debounce cancelled (Entry gone) for {}", r_id);
+                                        tracing::debug!("[Discovery] Removal Debounce cancelled (Entry gone) for {}", r_id);
                                     }
                                 });
                             }
@@ -872,7 +945,11 @@ pub fn run() {
                                                     if auto_receive {
                                                         clipboard::set_clipboard(text.clone());
                                                     } else {
-                                                        println!("Auto-receive disabled. Content not set locally.");
+                                                        let auto_send = { listener_state.settings.lock().unwrap().auto_send };
+                                                        if !auto_send {
+                                                            tracing::debug!("Auto-send disabled. Skipping broadcast.");
+                                                            return; // Use return to exit the async block, not continue
+                                                        }
                                                     }
                                                     
                                                     let _ = listener_handle.emit("clipboard-change", &text);

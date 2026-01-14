@@ -17,7 +17,7 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
         let mut clipboard = match Clipboard::new() {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Failed to initialize clipboard: {}", e);
+                tracing::error!("Failed to initialize clipboard: {}", e);
                 return;
             }
         };
@@ -53,7 +53,7 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                         *ignored = None;
                     }
                 } else if text != last_text && !text.is_empty() {
-                    println!("Clipboard Changed detected (len={})", text.len());
+                    tracing::debug!("Clipboard Changed detected (len={})", text.len());
                     last_text = text.clone();
 
                     // Update global deduplication cache to prevent echo loops
@@ -68,7 +68,7 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     // Check Auto-Send Setting
                     let auto_send = { state.settings.lock().unwrap().auto_send };
                     if !auto_send {
-                        println!("Auto-send disabled. Skipping broadcast.");
+                        tracing::debug!("Auto-send disabled. Skipping broadcast.");
                         continue;
                     }
 
@@ -83,7 +83,7 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                                 match crypto::encrypt(&key_arr, text.as_bytes()) {
                                     Ok(cipher) => Some(cipher),
                                     Err(e) => {
-                                        eprintln!("Failed to encrypt clipboard: {}", e);
+                                        tracing::error!("Failed to encrypt clipboard: {}", e);
                                         None
                                     }
                                 }
@@ -122,9 +122,9 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                                 let addr = std::net::SocketAddr::new(target, port);
                                 if let Err(e) = transport_clone.send_message(addr, &data_vec).await
                                 {
-                                    eprintln!("Failed to send to {}: {}", addr, e);
+                                    tracing::error!("Failed to send to {}: {}", addr, e);
                                 } else {
-                                    println!("Sent clipboard to {}", addr);
+                                    tracing::info!("Sent clipboard to {}", addr);
                                 }
                             });
                         }
@@ -149,12 +149,12 @@ pub fn set_clipboard(text: String) {
                 }
 
                 if let Err(e) = c.set_text(text) {
-                    eprintln!("Failed to set clipboard: {}", e);
+                    tracing::error!("Failed to set clipboard: {}", e);
                 } else {
-                    println!("Successfully set local clipboard content.");
+                    tracing::debug!("Successfully set local clipboard content.");
                 }
             }
-            Err(e) => eprintln!("Failed to init clipboard for write: {}", e),
+            Err(e) => tracing::error!("Failed to init clipboard for write: {}", e),
         }
     });
 }

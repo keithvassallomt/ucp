@@ -26,7 +26,7 @@ impl Discovery {
     ) -> Result<(), Box<dyn Error>> {
         // If already registered, unregister first
         if let Some(fullname) = &self.registered_service {
-            println!("Unregistering old service: {}", fullname);
+            tracing::info!("Unregistering old service: {}", fullname);
             let _ = self.daemon.unregister(fullname);
             // Short pause to ensure unregistration propagates locally if needed
             // std::thread::sleep(std::time::Duration::from_millis(100));
@@ -65,9 +65,12 @@ impl Discovery {
         let fullname = service_info.get_fullname().to_string();
 
         self.daemon.register(service_info)?;
-        println!(
+        tracing::info!(
             "Registered service: {} ({}) on {}:{}",
-            device_id, fullname, ip, port
+            device_id,
+            fullname,
+            ip,
+            port
         );
 
         self.registered_service = Some(fullname);
@@ -84,9 +87,9 @@ impl Discovery {
 impl Drop for Discovery {
     fn drop(&mut self) {
         if let Some(fullname) = &self.registered_service {
-            println!("Unregistering service: {}", fullname);
+            tracing::info!("Unregistering service: {}", fullname);
             if let Err(e) = self.daemon.unregister(fullname) {
-                eprintln!("Failed to unregister service: {}", e);
+                tracing::error!("Failed to unregister service: {}", e);
             }
             // Give the daemon time to send the goodbye packet before we drop it (and likely kill its background thread)
             std::thread::sleep(std::time::Duration::from_millis(300));
