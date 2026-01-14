@@ -3,7 +3,8 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { 
   Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2, LogOut, 
-  Settings, Wifi, Lock, Unlock, AlertTriangle, Info, CheckCircle2 
+  Settings, Wifi, Lock, Unlock, AlertTriangle, Info, CheckCircle2,
+  ChevronDown, ChevronRight
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -289,6 +290,18 @@ export default function App() {
   const [addManualOpen, setAddManualOpen] = useState(false);
   const [manualIp, setManualIp] = useState("");
   const [manualBusy, setManualBusy] = useState(false);
+  
+  const [joinError, setJoinError] = useState("");
+  const [expandedNetworks, setExpandedNetworks] = useState<Set<string>>(new Set());
+  
+  const toggleNetwork = (name: string) => {
+      setExpandedNetworks(prev => {
+          const next = new Set(prev);
+          if (next.has(name)) next.delete(name);
+          else next.add(name);
+          return next;
+      });
+  };
 
   // Keep ref in sync
   useEffect(() => {
@@ -370,6 +383,7 @@ export default function App() {
       setJoinTarget(networkName);
       setPairingPeerId(targetPeerId);
       setJoinPin("");
+      setJoinError("");
       setJoinBusy(false);
       setJoinOpen(true);
   };
@@ -377,6 +391,7 @@ export default function App() {
   const submitJoin = async () => {
       if (!joinPin || !pairingPeerId) return;
       setJoinBusy(true);
+      setJoinError("");
       
       try {
           await invoke("start_pairing", { peerId: pairingPeerId, pin: joinPin });
@@ -386,7 +401,7 @@ export default function App() {
               setJoinBusy(false);
           }, 5000);
       } catch (e) {
-          alert("Pairing request failed: " + String(e));
+          setJoinError(String(e));
           setJoinBusy(false);
       }
   };
@@ -567,6 +582,8 @@ export default function App() {
                  networkPin={networkPin}
                  peers={myPeers}
                  nearby={nearbyNetworks}
+                 expandedNetworks={expandedNetworks}
+                 toggleNetwork={toggleNetwork}
                  onJoin={(netName) => {
                      const group = grouped[netName];
                      if (group && group.length > 0) {
@@ -605,12 +622,25 @@ export default function App() {
             <div className="rounded-2xl border border-zinc-900/10 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/5">
               <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster PIN</div>
               <input
-                className="mt-2 h-12 w-full rounded-2xl border border-zinc-900/10 bg-white px-4 font-mono text-lg tracking-[0.25em] text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
+                className={clsx(
+                    "mt-2 h-12 w-full rounded-2xl border bg-white px-4 font-mono text-lg tracking-[0.25em] text-zinc-900 outline-none focus:ring-2 dark:bg-zinc-950 dark:text-zinc-50",
+                    joinError 
+                        ? "border-rose-500 focus:ring-rose-500/40 dark:border-rose-500/50" 
+                        : "border-zinc-900/10 focus:ring-emerald-500/40 dark:border-white/10"
+                )}
                 placeholder="••••••"
                 value={joinPin}
-                onChange={(e) => setJoinPin(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+                onChange={(e) => {
+                    setJoinPin(e.target.value.trim()); 
+                    setJoinError(""); 
+                }}
                 autoFocus
               />
+              {joinError && (
+                  <div className="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">
+                      {joinError}
+                  </div>
+              )}
             </div>
           </div>
         </Modal>
@@ -685,6 +715,8 @@ function DevicesView({
   networkPin,
   peers,
   nearby,
+  expandedNetworks,
+  toggleNetwork,
   onJoin,
   onDeletePeer,
   onAddManual,
@@ -695,6 +727,8 @@ function DevicesView({
   networkPin: string;
   peers: Peer[];
   nearby: NearbyNetwork[];
+  expandedNetworks: Set<string>;
+  toggleNetwork: (name: string) => void;
   onJoin: (networkName: string) => void;
   onDeletePeer: (id: string) => void;
   onAddManual: () => void;
@@ -730,9 +764,9 @@ function DevicesView({
             value={networkPin}
             mono
             action={
-              <Button variant="primary" size="sm" iconLeft={<Copy className="h-4 w-4" />} onClick={() => navigator.clipboard.writeText(networkPin)}>
-                Copy
-              </Button>
+              <IconButton label="Copy PIN" onClick={() => navigator.clipboard.writeText(networkPin)} variant="default">
+                 <Copy className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
+              </IconButton>
             }
           />
         </div>
@@ -766,25 +800,24 @@ function DevicesView({
                 {peers.map((p) => (
                   <div
                     key={p.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5"
+                    className="relative flex items-center justify-between gap-3 rounded-2xl border border-zinc-900/10 bg-white/60 p-3 pr-4 dark:border-white/10 dark:bg-white/5"
                   >
+                    {/* Online Badge - Absolute Top Right with some padding */}
+                    <div className="absolute right-2 top-2">
+                       <Badge tone="good">online</Badge>
+                    </div>
+
                     <div className="flex items-center gap-3">
                       <div className={clsx("flex h-10 w-10 items-center justify-center rounded-2xl", "bg-emerald-500/15")}>
                         <Wifi className="h-5 w-5 text-emerald-600 dark:text-emerald-300" />
                       </div>
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{p.hostname || p.id}</div>
-                          <Badge tone="good">online</Badge>
-                        </div>
-                        <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{p.ip}</div>
+                        <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{p.hostname || p.id}</div>
+                        <div className="text-xs text-zinc-600 dark:text-zinc-400">{p.ip}</div>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2">
-                      <Button size="sm" variant="ghost" iconLeft={<Copy className="h-4 w-4" />} onClick={() => navigator.clipboard.writeText(p.id)}>
-                        Copy ID
-                      </Button>
+                    <div className="mt-4 flex items-center">
                       <IconButton label="Kick / Ban" onClick={() => onDeletePeer(p.id)}>
                         <Trash2 className="h-5 w-5 text-rose-600" />
                       </IconButton>
@@ -818,11 +851,21 @@ function DevicesView({
                  </div>
               ) : (
                 <div className="mt-2 space-y-3">
-                  {nearby.map((n) => (
+                  {nearby.map((n) => {
+                    const isExpanded = expandedNetworks.has(n.networkName);
+                    return (
                     <div key={n.networkName} className="rounded-2xl border border-zinc-900/10 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
                       <div className="flex flex-col gap-3">
                         <div className="flex items-center justify-between">
-                            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{n.networkName}</div>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => toggleNetwork(n.networkName)}
+                                    className="flex h-6 w-6 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                                >
+                                   {isExpanded ? <ChevronDown className="h-4 w-4"/> : <ChevronRight className="h-4 w-4"/>}
+                                </button>
+                                <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{n.networkName}</div>
+                            </div>
                             <Button
                               variant="primary"
                               size="sm"
@@ -833,19 +876,21 @@ function DevicesView({
                               Join
                             </Button>
                         </div>
-                        <div className="flex flex-col gap-2">
-                          {n.devices.map((d) => (
-                            <div key={d.id} className="flex items-center gap-2 rounded-xl bg-black/5 p-2 dark:bg-white/5">
-                                <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                                <span className="truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                                   {d.hostname || d.id}
-                                </span>
+                        {isExpanded && (
+                            <div className="flex flex-col gap-2 pl-8">
+                              {n.devices.map((d) => (
+                                <div key={d.id} className="flex items-center gap-2 rounded-xl bg-black/5 p-2 dark:bg-white/5">
+                                    <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                                    <span className="truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                                       {d.hostname || d.id}
+                                    </span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
           </div>
