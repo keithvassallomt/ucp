@@ -315,11 +315,14 @@ async fn probe_ip(
             {
                 if state.settings.lock().unwrap().notifications.device_join {
                     println!("[Notification] Triggering 'New Device Found' for manual peer: {}", peer.hostname);
-                    let _ = app_handle.notification()
+                    if let Err(e) = app_handle.notification()
                         .builder()
                         .title("New Device Found")
                         .body(format!("{} has joined your cluster", peer.hostname))
-                        .show();
+                        .sound("Ping")
+                        .show() {
+                            eprintln!("[Notification Error] Failed to show manual peer notification: {}", e);
+                        }
                 } else {
                     println!("[Notification] Device join notification suppressed by settings for manual peer: {}", peer.hostname);
                 }
@@ -715,11 +718,14 @@ pub fn run() {
                                         if should_notify {
                                             if d_state.settings.lock().unwrap().notifications.device_join {
                                                 println!("[Notification] Triggering 'New Device Found' for discovered peer: {}", peer.hostname);
-                                               let _ = d_handle.notification()
+                                               if let Err(e) = d_handle.notification()
                                                    .builder()
                                                    .title("New Device Found")
                                                    .body(format!("{} has joined your cluster", peer.hostname))
-                                                   .show();
+                                                   .sound("Ping")
+                                                   .show() {
+                                                       eprintln!("[Notification Error] Failed to show discovered peer notification: {}", e);
+                                                   }
                                             } else {
                                                 println!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
                                             }
