@@ -57,10 +57,13 @@ fn init_logging() {
         .with_target(true);
 
     // 4. Init Registry
-    let filter = tracing_subscriber::EnvFilter::from_default_env()
-        .add_directive(level.into())
-        // Silence overly verbose crates if needed
-        .add_directive("globset=info".parse().unwrap()); 
+    // Base Level: INFO (for external crates) + User Level for US
+    let filter = tracing_subscriber::EnvFilter::new("info")
+        .add_directive(format!("tauri_app={}", args.log_level.to_lowercase()).parse().unwrap())
+        // Silence noisy networking crates
+        .add_directive("rustls=warn".parse().unwrap())
+        .add_directive("quinn=warn".parse().unwrap())
+        .add_directive("zbus=warn".parse().unwrap()); 
 
     tracing_subscriber::registry()
         .with(filter)
@@ -101,7 +104,7 @@ fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str) {
         .sound("Ping")
         .show() 
     {
-        eprintln!("[Notification Error] Native plugin failed: {}", e);
+        tracing::error!("[Notification Error] Native plugin failed: {}", e);
     }
     
     // 2. Linux Workaround (notify-send)
@@ -157,7 +160,7 @@ fn gossip_peer(
         
         tauri::async_runtime::spawn(async move {
             if let Err(e) = transport_clone.send_message(addr, &data_vec).await {
-                eprintln!("Failed to gossip peer to {}: {}", addr, e);
+                tracing::error!("Failed to gossip peer to {}: {}", addr, e);
             }
         });
     }
@@ -391,49 +394,45 @@ async fn probe_ip(
     let msg = Message::PeerDiscovery(my_peer);
     let data = serde_json::to_vec(&msg).unwrap_or_default();
     
-    println!("Probing {}...", addr);
-    
-    // We don't want to block too long.
-    match tokio::time::timeout(std::time::Duration::from_secs(2), transport.send_message(addr, &data)).await {
-        Ok(Ok(_)) => {
-            println!("Probe to {} SUCCESS!", addr);
-            // We connected! Add them as a temporary manual peer.
-            // We don't know their ID yet, so use "manual-<IP>".
-            let id = format!("manual-{}", ip);
-             let peer = Peer {
-                id: id.clone(),
-                ip,
-                port,
-                hostname: format!("Manual ({})", ip),
-                last_seen: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-                is_trusted: false, // Untrusted! User must Join.
-                is_manual: true,
-                network_name: Some("Found!".to_string()),
-                signature: None,
-            };
-
-            state.add_peer(peer.clone());
-            {
-                 let mut kp = state.known_peers.lock().unwrap();
-                 kp.insert(id.clone(), peer.clone());
-                 save_known_peers(&app_handle, &kp);
+            tracing::debug!("Probing {}...", addr);
+            let mut stream = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200));
+            if stream.is_ok() {
+               tracing::debug!("Probe to {} SUCCESS!", addr);
+               // Found a potential peer!
+               // Add to manual peers list temporarily so we can try to pair?
+               // Or just trigger a PairRequest immediately?
+               // For now, let's just add to known peers as "Manual" if not exists
+               
+                 let mut peers = state.known_peers.lock().unwrap();
+                 let id = format!("manual-{}", ip); // Temp ID until proper handshake
+                 if !peers.contains_key(&id) {
+                     let peer = Peer {
+                         id: id.clone(),
+                         ip, // Use the original `ip` which is `std::net::IpAddr`
+                         port,
+                         hostname: format!("Manual ({})", ip),
+                         last_seen: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                         is_trusted: false,
+                         is_manual: true,
+                         network_name: None,
+                         signature: None, 
+                     };
+                     peers.insert(id.clone(), peer.clone());
+                     // Emit update
+                     let _ = app_handle.emit("peer-update", &peer);
+                     
+                     // Notify?
+                      let notifications = state.settings.lock().unwrap().notifications.clone();
+                      if notifications.device_join {
+                         tracing::info!("[Notification] Triggering 'Device Joined' for manual peer: {}", peer.hostname);
+                         send_notification(&app_handle, "Device Joined", &format!("Found manual peer: {}", peer.hostname));
+                      } else {
+                         tracing::debug!("[Notification] Device join notification suppressed by settings for manual peer: {}", peer.hostname);
+                      }
+                 }
+            } else {
+                // tracing::debug!("Probe to {} failed or timed out.", addr);
             }
-            let _ = app_handle.emit("peer-update", &peer);
-
-            // Trigger Notification
-            {
-                if state.settings.lock().unwrap().notifications.device_join {
-                    println!("[Notification] Triggering 'New Device Found' for manual peer: {}", peer.hostname);
-                    send_notification(&app_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname));
-                } else {
-                    println!("[Notification] Device join notification suppressed by settings for manual peer: {}", peer.hostname);
-                }
-            }
-        }
-        _ => {
-            // println!("Probe to {} failed or timed out.", addr);
-        }
-    }
 }
 
 #[tauri::command]
@@ -446,7 +445,7 @@ async fn add_manual_peer(
     
     // 1. Try parsing as CIDR
     if let Ok(net) = ip.parse::<IpNetwork>() {
-        println!("Scanning range: {}", net);
+        tracing::info!("Scanning range: {}", net);
         let ips: Vec<std::net::IpAddr> = net.iter().collect();
         
         // Scan in small batches with concurrency
@@ -615,54 +614,54 @@ async fn start_pairing(
 
 // Helper to wipe state and restart network identity
 fn perform_factory_reset(app_handle: &tauri::AppHandle, state: &AppState, port: u16) {
-    // 2. Clear Runtime State & Generate New Identity
+    // 1. Reset Config on Disk
+    reset_network_state(app_handle);
+
+    // 2. Update Runtime State
     {
-        // ACQUIRE LOCKS FIRST
-        // This prevents background tasks (like Pruning or Heartbeat) from 
-        // reading/writing stale state while we are resetting.
         let mut kp = state.known_peers.lock().unwrap();
         let mut peers = state.peers.lock().unwrap();
-        
-        // 1. Reset Config on Disk
-        // Now safe because we hold the locks that background tasks would need to write back.
-        reset_network_state(app_handle);
+        let mut ck = state.cluster_key.lock().unwrap();
+        let mut ph = state.pending_handshakes.lock().unwrap();
+        let mut hs = state.handshake_sessions.lock().unwrap();
+        let mut nn = state.network_name.lock().unwrap();
+        let mut np = state.network_pin.lock().unwrap();
 
         kp.clear();
-        // Don't clear peers! mDNS has already discovered them. 
-        // Just mark them as untrusted so they show up in "Nearby Networks".
+        // Mark peers untrusted
         for p in peers.values_mut() {
             p.is_trusted = false;
-            // Note: their network_name remains whatever it was (e.g. "OldNetwork").
-            // Since our network_name changes below, they will rightfully be Foreign.
         }
-        let mut ck = state.cluster_key.lock().unwrap();
-        // Generate new Cluster Key for the new network
+        
+        // Generate new Cluster Key
         let mut new_key = [0u8; 32];
         rand::thread_rng().fill(&mut new_key);
         *ck = Some(new_key.to_vec());
         save_cluster_key(app_handle, &new_key);
         
-        // Clear Handshake State
-        state.pending_handshakes.lock().unwrap().clear();
-        state.handshake_sessions.lock().unwrap().clear();
+        ph.clear();
+        hs.clear();
+
+        // Load new identity (generated by accessors if missing)
+        let new_name_val = load_network_name(app_handle);
+        let new_pin_val = load_network_pin(app_handle);
         
-        // Generate new Name & PIN
-        let new_name = load_network_name(app_handle);
-        let new_pin = load_network_pin(app_handle);
+        *nn = new_name_val.clone();
+        *np = new_pin_val.clone();
         
-        *state.network_name.lock().unwrap() = new_name.clone();
-        *state.network_pin.lock().unwrap() = new_pin.clone();
-        
-        println!("Reset to New Network: {} (PIN: {})", new_name, new_pin);
-        
-        // Re-register mDNS with new name
+        tracing::info!("Reset to New Network: {} (PIN: {})", new_name_val, new_pin_val);
+    }
+    
+    // 3. Re-register mDNS
+    {
         let local_id = state.local_device_id.lock().unwrap().clone();
+        let new_name = state.network_name.lock().unwrap().clone();
         if let Some(discovery) = state.discovery.lock().unwrap().as_mut() {
              let _ = discovery.register(&local_id, &new_name, port);
         }
     }
     
-    // 3. Notify Frontend
+    // 4. Notify Frontend
     let _ = app_handle.emit("network-reset", ());
 }
 
@@ -678,19 +677,19 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(AppState::new())
         .setup(|app| {
-// Initialize QUIC Transport (Fixed Port 4654 for Discovery, or random fallback)
+            // Initialize QUIC Transport (Fixed Port 4654 for Discovery, or random fallback)
             let transport = tauri::async_runtime::block_on(async { 
                 match Transport::new(4654) {
                     Ok(t) => Ok(t),
                     Err(e) => {
-                        println!("Failed to bind port 4654 ({}). Falling back to random port.", e);
+                        tracing::warn!("Failed to bind port 4654 ({}). Falling back to random port.", e);
                         Transport::new(0)
                     }
                 }
             }).expect("Failed to create transport");
 
             let port = transport.local_addr().expect("Failed to get port").port();
-            println!("QUIC Transport listening on port {}", port);
+            tracing::info!("QUIC Transport listening on port {}", port);
 
             let app_handle = app.handle();
 
@@ -703,7 +702,7 @@ pub fn run() {
                 if let Some(key) = load_cluster_key(app_handle) {
                     *ck_lock = Some(key);
                 } else {
-                    println!("No Cluster Key found. Generating new one...");
+                    tracing::info!("No Cluster Key found. Generating new one...");
                     let mut new_key = [0u8; 32];
                     rand::thread_rng().fill(&mut new_key);
                     save_cluster_key(app_handle, &new_key);
@@ -721,9 +720,9 @@ pub fn run() {
                     let run_id: u32 = rand::thread_rng().gen();
                     device_id = format!("ucp-{}", run_id);
                     save_device_id(app_handle, &device_id);
-                    println!("Generated new Device ID: {}", device_id);
+                    tracing::info!("Generated new Device ID: {}", device_id);
                 } else {
-                    println!("Loaded Device ID: {}", device_id);
+                    tracing::info!("Loaded Device ID: {}", device_id);
                 }
                 *state.local_device_id.lock().unwrap() = device_id.clone();
                 
@@ -734,15 +733,12 @@ pub fn run() {
                 // 3c. Load Network PIN
                 let network_pin = load_network_pin(app_handle);
                 *state.network_pin.lock().unwrap() = network_pin.clone();
-                // 3c. Load Network PIN
-                let network_pin = load_network_pin(app_handle);
-                *state.network_pin.lock().unwrap() = network_pin.clone();
-                println!("Network PIN: {}", network_pin);
+                tracing::info!("Network PIN: {}", network_pin);
 
                 // 3d. Load Settings
                 let settings = load_settings(app_handle);
                 *state.settings.lock().unwrap() = settings;
-                println!("Loaded Settings");
+                tracing::info!("Loaded Settings");
 
                 // 4. Register Discovery
                 let mut discovery = Discovery::new().expect("Failed to initialize discovery");
@@ -841,7 +837,7 @@ pub fn run() {
                                             } else {
                                                 tracing::debug!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
                                             }                                      } else {
-                                            // println!("[Notification] suppressed - different cluster name.");
+                                            // tracing::debug!("[Notification] suppressed - different cluster name.");
                                         }
                                     }
                                     // Lock drops here
@@ -853,7 +849,21 @@ pub fn run() {
                                     fullname.split('.').next().unwrap_or("unknown").to_string();
                                 tracing::info!("[Discovery] Service Removed: {} -> ID: {}", fullname, id);
                                 
-                                // DEBOUNCE: Don't remove immediately. Wait 3 seconds.
+                                // Safety Check: If we effectively just saw this peer (in the last 2 seconds),
+                                // ignore this removal as a "phantom" or out-of-order packet.
+                                // This happens often when devices re-announce themselves.
+                                {
+                                    let peers = d_state.peers.lock().unwrap();
+                                    if let Some(peer) = peers.get(&id) {
+                                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+                                        if now.saturating_sub(peer.last_seen) < 2 {
+                                             tracing::warn!("[Discovery] Ignoring ServiceRemoved for {} (seen {}s ago) - likely phantom.", id, now.saturating_sub(peer.last_seen));
+                                             return;
+                                        }
+                                    }
+                                }
+
+                                // DEBOUNCE: Don't remove immediately. Wait 8 seconds.
                                 let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_micros() as u64;
                                 {
                                     let mut pending = d_state.pending_removals.lock().unwrap();
@@ -865,7 +875,7 @@ pub fn run() {
                                 let r_id = id.clone();
                                 
                                 tauri::async_runtime::spawn(async move {
-                                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                                    tokio::time::sleep(std::time::Duration::from_secs(8)).await;
                                     
                                     let mut pending = r_state.pending_removals.lock().unwrap();
                                     if let Some(n) = pending.get(&r_id) {
@@ -908,17 +918,18 @@ pub fn run() {
             // Start Listening
             let transport_inside = transport.clone();
             transport.start_listening(move |data, addr| {
-                println!("Received {} bytes from {}", data.len(), addr);
+                tracing::trace!("Received {} bytes from {}", data.len(), addr);
+                
+                let listener_handle = listener_handle.clone();
+                let listener_state = listener_state.clone();
+                let transport_inside = transport_inside.clone();
 
-                if let Ok(msg) = serde_json::from_slice::<Message>(&data) {
-                    let listener_handle = listener_handle.clone();
-                    let listener_state = listener_state.clone();
-                    let transport_inside = transport_inside.clone();
-
-                    tauri::async_runtime::spawn(async move {
-                        match msg {
+                tauri::async_runtime::spawn(async move {
+                    match serde_json::from_slice::<Message>(&data) {
+                        Ok(msg) => match msg {
                             Message::Clipboard(ciphertext) => {
-                                println!("Received Encrypted Clipboard from {}", addr);
+                                // Decrypt
+                                tracing::debug!("Received Encrypted Clipboard from {}", addr);
                                 let key_opt = {
                                     listener_state.cluster_key.lock().unwrap().clone()
                                 };
@@ -938,11 +949,11 @@ pub fn run() {
                                                     }
                                                     
                                                     // Check Auto-Receive Setting
-                                                    let auto_receive = listener_state.settings.lock().unwrap().auto_receive;
+                                                    tracing::debug!("Decrypted Clipboard: {}...", if text.len() > 20 { &text[0..20] } else { &text }); // Truncate for log
                                                     
-                                                    println!("Decrypted Clipboard: {}", text);
-                                                    
-                                                    if auto_receive {
+                                                    // Set Clipboard (Dedupe check is inside set_clipboard)
+                                                    let auto_receiver = { listener_state.settings.lock().unwrap().auto_receive };
+                                                    if auto_receiver {
                                                         clipboard::set_clipboard(text.clone());
                                                     } else {
                                                         let auto_send = { listener_state.settings.lock().unwrap().auto_send };
@@ -953,6 +964,12 @@ pub fn run() {
                                                     }
                                                     
                                                     let _ = listener_handle.emit("clipboard-change", &text);
+
+                                                    // Notify
+                                                    let notifications = listener_state.settings.lock().unwrap().notifications.clone();
+                                                    if notifications.data_received {
+                                                        send_notification(&listener_handle, "Clipboard Received", "Content copied to clipboard");
+                                                    }
 
                                                     // Relay
                                                     let state_relay = listener_state.clone();
@@ -973,13 +990,15 @@ pub fn run() {
                                                     }
                                                 }
                                             }
-                                            Err(e) => eprintln!("Failed to decrypt clipboard: {}", e),
+                                            Err(e) => tracing::error!("Decryption failed: {}", e),
                                         }
+                                    } else {
+                                       tracing::warn!("Received clipboard but no Cluster Key set!"); 
                                     }
                                 }
                             }
                             Message::PairRequest { msg, device_id } => {
-                                println!("Received PairRequest from {} ({}). Authenticating...", addr, device_id);
+                                tracing::info!("Received PairRequest from {} ({}). Authenticating...", addr, device_id);
                                 let local_id = listener_state.local_device_id.lock().unwrap().clone();
                                 let pin = listener_state.network_pin.lock().unwrap().clone();
                                 
@@ -993,7 +1012,7 @@ pub fn run() {
                                             if transport_inside.send_message(addr, &resp_data).await.map_err(|e| e.to_string()).is_ok() {
                                                  match crypto::finish_spake2(spake_state, &msg).map_err(|e| e.to_string()) {
                                                      Ok(session_key) => {
-                                                         println!("Authentication Success for {}!", device_id);
+                                                         tracing::info!("Authentication Success for {}!", device_id);
                                                          // Encrypt Cluster Key
                                                          let cluster_key_opt = {
                                                              listener_state.cluster_key.lock().unwrap().clone()
@@ -1038,16 +1057,16 @@ pub fn run() {
                                                              }
                                                          }
                                                      }
-                                                     Err(e) => eprintln!("Auth Failed: {}", e),
+                                                     Err(e) => tracing::error!("Auth Failed: {}", e),
                                                  }
                                             }
                                         }
                                     }
-                                    Err(e) => eprintln!("SPAKE2 Error: {}", e),
+                                    Err(e) => tracing::error!("SPAKE2 Error: {}", e),
                                 }
                             }
                             Message::PairResponse { msg, device_id } => {
-                                println!("Received PairResponse from {} ({})", addr, device_id);
+                                tracing::info!("Received PairResponse from {} ({})", addr, device_id);
                                 let spake_state = {
                                     let mut pending = listener_state.pending_handshakes.lock().unwrap();
                                     pending.remove(&addr.to_string())
@@ -1055,16 +1074,16 @@ pub fn run() {
                                 if let Some(state) = spake_state {
                                     match crypto::finish_spake2(state, &msg).map_err(|e| e.to_string()) {
                                         Ok(session_key) => {
-                                            println!("Auth Success (Initiator)! Waiting for Welcome...");
+                                            tracing::info!("Auth Success (Initiator)! Waiting for Welcome...");
                                             let mut sessions = listener_state.handshake_sessions.lock().unwrap();
                                             sessions.insert(addr.to_string(), session_key);
                                         }
-                                        Err(e) => eprintln!("Auth Failed: {}", e),
+                                        Err(e) => tracing::error!("Auth Failed: {}", e),
                                     }
                                 }
                             }
                             Message::Welcome { encrypted_cluster_key, known_peers, network_name, network_pin } => {
-                                println!("Received WELCOME from {}", addr);
+                                tracing::info!("Received WELCOME from {}", addr);
                                 let session_key = {
                                     let sessions = listener_state.handshake_sessions.lock().unwrap();
                                     sessions.get(&addr.to_string()).cloned()
@@ -1075,7 +1094,7 @@ pub fn run() {
                                         sk_arr.copy_from_slice(&sk);
                                         match crypto::decrypt(&sk_arr, &encrypted_cluster_key).map_err(|e| e.to_string()) {
                                             Ok(cluster_key) => {
-                                                println!("Joined Network: {} (PIN: {})", network_name, network_pin);
+                                                tracing::info!("Joined Network: {} (PIN: {})", network_name, network_pin);
                                                 // Save Keys & Name
                                                 {
                                                     let mut ck = listener_state.cluster_key.lock().unwrap();
@@ -1122,13 +1141,15 @@ pub fn run() {
                                                 }
                                                 save_known_peers(listener_handle.app_handle(), &kp_lock);
                                             }
-                                            Err(e) => eprintln!("Decryption Error: {}", e),
+                                            Err(e) => tracing::error!("Decryption Error: {}", e),
                                         }
+                                    } else {
+                                        tracing::error!("Decryption Error: No Cluster Key loaded.");
                                     }
                                 }
                             }
                             Message::PeerDiscovery(mut peer) => {
-                                println!("Received PeerDiscovery for {}", peer.hostname);
+                                tracing::debug!("Received PeerDiscovery for {}", peer.hostname);
                                 
                                 // 0. Self Filter (Issue C)
                                 let local_id = listener_state.local_device_id.lock().unwrap().clone();
@@ -1162,7 +1183,7 @@ pub fn run() {
                                      // If we have a manual placeholder for this IP, remove it.
                                      let manual_id = format!("manual-{}", peer.ip);
                                      if kp_lock.contains_key(&manual_id) {
-                                         println!("Replacing manual placeholder {} with real peer {}", manual_id, peer.id);
+                                         tracing::info!("Replacing manual placeholder {} with real peer {}", manual_id, peer.id);
                                          kp_lock.remove(&manual_id);
                                          listener_state.peers.lock().unwrap().remove(&manual_id);
                                          let _ = listener_handle.emit("peer-remove", &manual_id);
@@ -1197,13 +1218,13 @@ pub fn run() {
                                      
                                      if is_signature_valid {
                                          // Valid Signature: We TRUST this peer.
-                                         println!("Verified Signature for {}! Trust maintained/granted.", peer.id);
+                                         tracing::debug!("Verified Signature for {}! Trust maintained/granted.", peer.id);
                                          peer.is_trusted = true;
                                      } else {
                                          // Invalid/Missing Signature: We DO NOT TRUST this peer.
                                          if let Some(existing) = kp_lock.get(&peer.id) {
                                              if existing.is_trusted {
-                                                println!("Revoking Trust for {}: Invalid/Missing Signature.", peer.id);
+                                                tracing::warn!("Revoking Trust for {}: Invalid/Missing Signature.", peer.id);
                                              }
                                          }
                                          peer.is_trusted = false;
@@ -1222,7 +1243,7 @@ pub fn run() {
                                          // Untrusted Auto-Discovered -> Memory Only.
                                          // If it WAS persisted (e.g. formerly trusted), REMOVE it from disk.
                                          if kp_lock.contains_key(&peer.id) {
-                                             println!("Removing untrusted auto-peer {} from persistence.", peer.id);
+                                             tracing::info!("Removing untrusted auto-peer {} from persistence.", peer.id);
                                              kp_lock.remove(&peer.id);
                                              save_known_peers(listener_handle.app_handle(), &kp_lock);
                                          }
@@ -1231,7 +1252,7 @@ pub fn run() {
                                 
                                 // Send OUR info back so they can update their placeholder!
                                 if should_reply {
-                                    println!("Sending Discovery Reply to {}", addr);
+                                    tracing::debug!("Sending Discovery Reply to {}", addr);
                                     let local_id = listener_state.local_device_id.lock().unwrap().clone();
                                     let hostname = hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or("Unknown".to_string());
                                     let network_name = listener_state.network_name.lock().unwrap().clone();
@@ -1267,11 +1288,11 @@ pub fn run() {
                                 }
                             }
                             Message::PeerRemoval(target_id) => {
-                                println!("Received PeerRemoval for {}", target_id);
+                                tracing::info!("Received PeerRemoval for {}", target_id);
                                 let local_id = listener_state.local_device_id.lock().unwrap().clone();
                                 
                                 if target_id == local_id {
-                                    println!("I have been removed from the network! resetting state...");
+                                    tracing::warn!("I have been removed from the network! resetting state...");
                                     perform_factory_reset(
                                         &listener_handle,
                                         &listener_state,
@@ -1296,8 +1317,9 @@ pub fn run() {
                                 }
                             }
                         }
-                    });
-                }
+                        Err(e) => tracing::error!("Failed to parse message: {}", e),
+                    }
+                });
             });
 
             // Start Clipboard Monitor
@@ -1386,7 +1408,7 @@ pub fn run() {
                     // Iterate over peers to find stale ones
                     for (id, p) in peers_lock.iter() {
                         if now - p.last_seen > timeout {
-                            println!("Pruning stale peer: {} ({}) - Last seen {}s ago", p.hostname, id, now - p.last_seen);
+                            tracing::info!("Pruning stale peer: {} ({}) - Last seen {}s ago", p.hostname, id, now - p.last_seen);
                             to_remove.push(p.clone());
                         }
                     }
@@ -1436,7 +1458,7 @@ pub fn run() {
         .run(|app_handle: &tauri::AppHandle, event: tauri::RunEvent| {
         match event {
             tauri::RunEvent::Exit => {
-                println!("App exiting, dropping discovery service...");
+                tracing::info!("App exiting, dropping discovery service...");
                 let state = app_handle.state::<AppState>();
                 let mut discovery = state.discovery.lock().unwrap();
                 *discovery = None; // Explicitly drop to trigger unregister
