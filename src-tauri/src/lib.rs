@@ -57,7 +57,7 @@ fn check_and_notify_leave(app_handle: &tauri::AppHandle, state: &AppState, peer:
         if let Some(remote_net) = &peer.network_name {
             if *remote_net == local_net {
                 println!("[Notification] Device Left: {}", peer.hostname);
-                send_notification(app_handle, "Device Disconnected", &format!("{} has left the cluster", peer.hostname));
+                send_notification(app_handle, "Device Left", &format!("{} has left the cluster", peer.hostname));
             }
         }
     }
@@ -355,7 +355,7 @@ async fn probe_ip(
             {
                 if state.settings.lock().unwrap().notifications.device_join {
                     println!("[Notification] Triggering 'New Device Found' for manual peer: {}", peer.hostname);
-                    send_notification(&app_handle, "New Device Found", &format!("{} has joined your cluster", peer.hostname));
+                    send_notification(&app_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname));
                 } else {
                     println!("[Notification] Device join notification suppressed by settings for manual peer: {}", peer.hostname);
                 }
@@ -699,6 +699,14 @@ pub fn run() {
                                         continue;
                                     }
 
+                                    // DEBOUNCE: Cancel any pending removal for this peer
+                                    {
+                                        let mut pending = d_state.pending_removals.lock().unwrap();
+                                        if pending.remove(&id).is_some() {
+                                            println!("[Discovery] Debounce: Cancelled pending removal for reappearing peer {}", id);
+                                        }
+                                    }
+
                                     let network_name_prop = info
                                         .get_property_val_str("n")
                                         .map(|s| s.to_string());
@@ -756,29 +764,60 @@ pub fn run() {
                                         if should_notify {
                                             if d_state.settings.lock().unwrap().notifications.device_join {
                                                 println!("[Notification] Triggering 'New Device Found' for discovered peer: {}", peer.hostname);
-                                                send_notification(&d_handle, "New Device Found", &format!("{} has joined your cluster", peer.hostname));
+                                                send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname));
                                             } else {
                                                 println!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
-                                            }
-                                        } else {
+                                            }                                      } else {
                                             // println!("[Notification] suppressed - different cluster name.");
                                         }
                                     }
                                     // Lock drops here
                                 }
+
                             }
                             mdns_sd::ServiceEvent::ServiceRemoved(_ty, fullname) => {
                                 let id =
                                     fullname.split('.').next().unwrap_or("unknown").to_string();
                                 println!("[Discovery] Service Removed: {} -> ID: {}", fullname, id);
+                                
+                                // DEBOUNCE: Don't remove immediately. Wait 3 seconds.
+                                let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_micros() as u64;
                                 {
-                                    let mut peers = d_state.peers.lock().unwrap();
-                                    if let Some(peer) = peers.remove(&id) {
-                                         drop(peers); // Drop lock before notifying
-                                         check_and_notify_leave(&d_handle, &d_state, &peer);
-                                    }
+                                    let mut pending = d_state.pending_removals.lock().unwrap();
+                                    pending.insert(id.clone(), nonce);
                                 }
-                                let _ = d_handle.emit("peer-remove", &id);
+                                
+                                let r_state = d_state.clone();
+                                let r_handle = d_handle.clone();
+                                let r_id = id.clone();
+                                
+                                tauri::async_runtime::spawn(async move {
+                                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                                    
+                                    let mut pending = r_state.pending_removals.lock().unwrap();
+                                    if let Some(n) = pending.get(&r_id) {
+                                        if *n == nonce {
+                                            // Confirmed! Still pending and nonce matches (not overwritten by newer removal?)
+                                            pending.remove(&r_id);
+                                            drop(pending); // Drop lock
+                                            
+                                            // Proceed with removal
+                                            {
+                                                println!("[Discovery] Debounce expired. Removing peer {}", r_id);
+                                                let mut peers = r_state.peers.lock().unwrap();
+                                                if let Some(peer) = peers.remove(&r_id) {
+                                                     drop(peers); // Drop lock before notifying
+                                                     check_and_notify_leave(&r_handle, &r_state, &peer);
+                                                }
+                                            }
+                                            let _ = r_handle.emit("peer-remove", &r_id);
+                                        } else {
+                                            println!("[Discovery] Removal Debounce cancelled (Nonce mismatch) for {}", r_id);
+                                        }
+                                    } else {
+                                        println!("[Discovery] Removal Debounce cancelled (Entry gone) for {}", r_id);
+                                    }
+                                });
                             }
                             _ => {}
                         }

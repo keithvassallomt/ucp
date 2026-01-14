@@ -29,6 +29,8 @@ pub struct AppState {
     pub network_pin: Arc<Mutex<String>>,
     // App Settings
     pub settings: Arc<Mutex<AppSettings>>,
+    // Pending Removals (Debounce for mDNS)
+    pub pending_removals: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl AppState {
@@ -45,6 +47,7 @@ impl AppState {
             network_name: Arc::new(Mutex::new(String::new())),
             network_pin: Arc::new(Mutex::new(String::new())),
             settings: Arc::new(Mutex::new(AppSettings::default())),
+            pending_removals: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
