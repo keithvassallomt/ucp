@@ -1040,7 +1040,11 @@ pub fn run() {
                                      }
                                      
                                      // If we don't know them at all, reply!
-                                     if !kp_lock.contains_key(&peer.id) {
+                                     // Fix Infinite Loop: Check if we know them in MEMORY too.
+                                     // access runtime peers (safe here because we hold kp_lock, establishing KP->Peers order)
+                                     let runtime_known = listener_state.peers.lock().unwrap().contains_key(&peer.id);
+                                     
+                                     if !kp_lock.contains_key(&peer.id) && !runtime_known {
                                          should_reply = true;
                                      }
 
@@ -1233,28 +1237,27 @@ pub fn run() {
             let prune_state = (*app.state::<AppState>()).clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
                     let timeout = 60; // 60 seconds timeout
 
-                    let mut params_to_remove = Vec::new();
+                    // Fix Deadlock: Acquire known_peers FIRST, then peers.
+                    // This matches perform_factory_reset and PeerDiscovery.
+                    let mut kp_lock = prune_state.known_peers.lock().unwrap();
+                    let mut peers_lock = prune_state.peers.lock().unwrap();
+
+                    let mut to_remove = Vec::new();
                     
-                    {
-                        let peers = prune_state.get_peers();
-                        for (id, p) in peers {
-                            // Prune ANY peer that hasn't been seen in timeout seconds
-                            if now - p.last_seen > timeout {
-                                println!("Pruning stale peer: {} ({}) - Last seen {}s ago", p.hostname, id, now - p.last_seen);
-                                params_to_remove.push((id, p.is_trusted));
-                            }
+                    // Iterate over peers to find stale ones
+                    for (id, p) in peers_lock.iter() {
+                        if now - p.last_seen > timeout {
+                            println!("Pruning stale peer: {} ({}) - Last seen {}s ago", p.hostname, id, now - p.last_seen);
+                            to_remove.push((id.clone(), p.is_trusted));
                         }
                     }
 
-                    if !params_to_remove.is_empty() {
-                         let mut peers_lock = prune_state.peers.lock().unwrap();
-                         let mut kp_lock = prune_state.known_peers.lock().unwrap();
-                         
-                         for (id, was_trusted) in params_to_remove {
+                    if !to_remove.is_empty() {
+                         for (id, was_trusted) in to_remove {
                              // Always remove from RUNTIME peers (UI)
                              peers_lock.remove(&id);
 
