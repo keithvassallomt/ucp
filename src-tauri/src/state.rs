@@ -1,4 +1,5 @@
 use crate::peer::Peer;
+use crate::storage::AppSettings;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 // use crate::crypto::SpakeState; // We'll just use explicit path or generic if needed, but explicit path is best.
@@ -24,7 +25,10 @@ pub struct AppState {
     // Human Readable Network Name
     pub network_name: Arc<Mutex<String>>,
     // Network PIN (6-char alphanumeric, for auto-joining)
+    // Network PIN (6-char alphanumeric, for auto-joining)
     pub network_pin: Arc<Mutex<String>>,
+    // App Settings
+    pub settings: Arc<Mutex<AppSettings>>,
 }
 
 impl AppState {
@@ -40,6 +44,7 @@ impl AppState {
             last_clipboard_content: Arc::new(Mutex::new(String::new())),
             network_name: Arc::new(Mutex::new(String::new())),
             network_pin: Arc::new(Mutex::new(String::new())),
+            settings: Arc::new(Mutex::new(AppSettings::default())),
         }
     }
 

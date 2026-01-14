@@ -65,6 +65,13 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     // Emit to frontend (local notification)
                     let _ = app_handle.emit("clipboard-change", &text);
 
+                    // Check Auto-Send Setting
+                    let auto_send = { state.settings.lock().unwrap().auto_send };
+                    if !auto_send {
+                        println!("Auto-send disabled. Skipping broadcast.");
+                        continue;
+                    }
+
                     // Encrypt Payload using Cluster Key
                     let payload: Option<Vec<u8>> = {
                         let ck_lock = state.cluster_key.lock().unwrap();

@@ -15,7 +15,7 @@ use state::AppState;
 use storage::{
     load_cluster_key, load_device_id, load_known_peers, load_network_name, load_network_pin,
     save_cluster_key, save_device_id, save_known_peers, save_network_name, save_network_pin,
-    reset_network_state,
+    reset_network_state, load_settings, AppSettings,
 };
 use tauri::{Emitter, Manager};
 use transport::Transport;
@@ -71,10 +71,112 @@ fn get_network_pin(state: tauri::State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
-fn get_hostname() -> String {
+fn get_hostname(state: tauri::State<'_, AppState>) -> String {
+    let settings = state.settings.lock().unwrap();
+    if let Some(custom_name) = &settings.custom_device_name {
+        if !custom_name.trim().is_empty() {
+             return custom_name.clone();
+        }
+    }
+    
     hostname::get()
         .map(|h| h.to_string_lossy().to_string())
         .unwrap_or_else(|_| "Unknown".to_string())
+}
+
+#[tauri::command]
+fn get_settings(state: tauri::State<'_, AppState>) -> AppSettings {
+    state.settings.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn save_settings(
+    settings: AppSettings,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) {
+    *state.settings.lock().unwrap() = settings.clone();
+    crate::storage::save_settings(&app_handle, &settings);
+    // If auto_receive is now OFF, we might want to do something?
+    // If device name changed, we should probably rebroadcast or something, 
+    // but the next heartbeat or discovery probe will pick it up.
+    // Ideally we emit an event if needed.
+    
+    // Check if network name changed via Provisioning (this function saves AppSettings, but UI might call separate commands for Network Name/PIN)
+    // Wait, the UI for Provisioned Mode will likely update NetworkName/PIN directly? 
+    // Or do we store them in AppSettings too? 
+    // The requirement says "Provisioned mode, the user can enter a cluster name and PIN". 
+    // Those are actually `state.network_name` and `state.network_pin`. 
+    // `AppSettings` stores the *mode*. 
+    // So the UI should call `save_network_identity` (new command needed?) or Update existing commands?
+    // We already have `load_network_name` but no set command exposed.
+    // I will add `set_network_identity` command.
+}
+
+#[tauri::command]
+fn set_network_identity(
+    name: String,
+    pin: String,
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) {
+    // Validate?
+    *state.network_name.lock().unwrap() = name.clone();
+    *state.network_pin.lock().unwrap() = pin.clone();
+    
+    crate::storage::save_network_name(&app_handle, &name);
+    crate::storage::save_network_pin(&app_handle, &pin);
+    
+    // Also likely need to reset keys if we are "provisioning" a new identity? 
+    // Or do we keep the key? 
+    // If I type a new name/pin, I am essentially saying "I belong to THIS network now".
+    // I need the key for THAT network. 
+    // If I'm creating it, I generate a key. 
+    // If I'm joining it (provisioned), I usually need the Key too OR I need to Pair.
+    // But "Provisioned" usually means "I set the config manually". 
+    // The prompt says "Toggle... default behaviour applies (random)... Provisioned... user can enter".
+    // It doesn't say "User enters Key".
+    // So "Provisioned" here effectively just means "Manual valid Network Name/PIN" instead of "Random Name/PIN".
+    // It implies we are STARTING a cluster with this name/pin.
+    // So we keep our current Key (or gen a new one). 
+    // Since we are changing identity, a new Key is safer.
+    // But if we just rename the cluster, we might want to keep the key.
+    // Let's assume re-provisioning = New Identity = Gen New Key too?
+    // Actually, if I just want to rename my cluster "My Home", I don't want to break existing peers if I can help it?
+    // But existing peers know me by Key? No, they pair with Spake2 using PIN.
+    // If I change PIN, they can't pair.
+    // If I change Name, they see "My Home" instead of "Fuzzy-Badger".
+    // I'll stick to just updating Name/PIN.
+    
+    // Re-register mDNS with new name
+    let device_id = state.local_device_id.lock().unwrap().clone();
+    let port = 4654; // TODO: Get actual port from transport? We don't have transport here. 
+    // Discovery usually stores port.
+    if let Some(discovery) = state.discovery.lock().unwrap().as_mut() {
+          let _ = discovery.register(&device_id, &name, port);
+    }
+    
+    let _ = app_handle.emit("network-update", ());
+}
+
+#[tauri::command]
+fn regenerate_network_identity(
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) {
+    let (name, pin) = crate::storage::regenerate_identity(&app_handle);
+    
+    *state.network_name.lock().unwrap() = name.clone();
+    *state.network_pin.lock().unwrap() = pin.clone();
+    
+    let device_id = state.local_device_id.lock().unwrap().clone();
+    let port = 4654; 
+    
+    if let Some(discovery) = state.discovery.lock().unwrap().as_mut() {
+          let _ = discovery.register(&device_id, &name, port);
+    }
+    
+    let _ = app_handle.emit("network-update", ());
 }
 
 #[tauri::command]
@@ -502,7 +604,15 @@ pub fn run() {
                 // 3c. Load Network PIN
                 let network_pin = load_network_pin(app_handle);
                 *state.network_pin.lock().unwrap() = network_pin.clone();
+                // 3c. Load Network PIN
+                let network_pin = load_network_pin(app_handle);
+                *state.network_pin.lock().unwrap() = network_pin.clone();
                 println!("Network PIN: {}", network_pin);
+
+                // 3d. Load Settings
+                let settings = load_settings(app_handle);
+                *state.settings.lock().unwrap() = settings;
+                println!("Loaded Settings");
 
                 // 4. Register Discovery
                 let mut discovery = Discovery::new().expect("Failed to initialize discovery");
@@ -632,8 +742,17 @@ pub fn run() {
                                                         *last = text.clone();
                                                     }
                                                     
+                                                    // Check Auto-Receive Setting
+                                                    let auto_receive = listener_state.settings.lock().unwrap().auto_receive;
+                                                    
                                                     println!("Decrypted Clipboard: {}", text);
-                                                    clipboard::set_clipboard(text.clone());
+                                                    
+                                                    if auto_receive {
+                                                        clipboard::set_clipboard(text.clone());
+                                                    } else {
+                                                        println!("Auto-receive disabled. Content not set locally.");
+                                                    }
+                                                    
                                                     let _ = listener_handle.emit("clipboard-change", &text);
 
                                                     // Relay
@@ -1066,7 +1185,11 @@ pub fn run() {
             get_network_name,
             get_network_pin,
             get_device_id,
-            get_hostname
+            get_hostname,
+            get_settings,
+            save_settings,
+            set_network_identity,
+            regenerate_network_identity,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

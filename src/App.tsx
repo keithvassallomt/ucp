@@ -36,6 +36,21 @@ type HistoryItem = {
     text: string;
 };
 
+interface NotificationSettings {
+  device_join: boolean;
+  device_leave: boolean;
+  data_sent: boolean;
+  data_received: boolean;
+}
+
+interface AppSettings {
+  custom_device_name: string | null;
+  cluster_mode: "auto" | "provisioned";
+  auto_send: boolean;
+  auto_receive: boolean;
+  notifications: NotificationSettings;
+}
+
 /* --- Helper Components (from Design) --- */
 // ... (Badge, SectionHeader, Card omitted as they are fine, just fixing Button props below)
 
@@ -142,24 +157,35 @@ function IconButton({
   onClick,
   children,
   variant = "ghost",
+  active = false,
+  danger = false
 }: {
   label: string;
   onClick?: () => void;
   children: React.ReactNode;
   variant?: "ghost" | "default";
+  active?: boolean;
+  danger?: boolean;
 }) {
   return (
     <button
-      aria-label={label}
       onClick={onClick}
       className={clsx(
-        "no-drag inline-flex h-11 w-11 items-center justify-center rounded-xl transition focus:outline-none focus:ring-2 focus:ring-emerald-500/40",
-        variant === "default"
-          ? "bg-zinc-900/5 hover:bg-zinc-900/10 dark:bg-white/5 dark:hover:bg-white/10"
-          : "hover:bg-zinc-900/5 dark:hover:bg-white/5"
+        "group relative flex h-10 w-10 items-center justify-center rounded-xl transition focus:outline-none focus:ring-2 focus:ring-emerald-500/40 no-drag",
+        active 
+          ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+          : danger 
+            ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+            : "text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-50",
+         variant === "default" && !active && !danger && "bg-zinc-900/5 dark:bg-white/5"
       )}
     >
       {children}
+      
+      {/* Tooltip */}
+      <span className="pointer-events-none absolute top-full mt-2 hidden whitespace-nowrap rounded-lg bg-zinc-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:block group-hover:opacity-100 dark:bg-white dark:text-zinc-900 z-50">
+        {label}
+      </span>
     </button>
   );
 }
@@ -239,6 +265,18 @@ export default function App() {
   const [myHostname, setMyHostname] = useState("Loading...");
   const [networkPin, setNetworkPin] = useState("...");
 
+  const [unsavedChanges, setUnsavedChanges] = useState(false);
+  const [dialog, setDialog] = useState<{
+      open: boolean;
+      title: string;
+      description: string;
+      onConfirm: () => void;
+      onCancel?: () => void;
+      confirmLabel?: string;
+      cancelLabel?: string;
+      type?: "neutral" | "danger" | "success";
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
+
   /* Modal State */
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinTarget, setJoinTarget] = useState<string>("");
@@ -311,12 +349,18 @@ export default function App() {
         // Reload app to reset state
         window.location.reload();
     });
+    
+    const unlistenUpdate = listen("network-update", () => {
+        invoke<string>("get_network_name").then(name => setMyNetworkName(name));
+        invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
+    });
 
     return () => {
       unlistenPeer.then((f) => f());
       unlistenClipboard.then((f) => f());
       unlistenRemove.then((f) => f());
       unlistenReset.then((f) => f());
+      unlistenUpdate.then((f) => f());
     };
   }, []);
 
@@ -345,6 +389,41 @@ export default function App() {
           alert("Pairing request failed: " + String(e));
           setJoinBusy(false);
       }
+  };
+
+  const handleViewChange = (view: View) => {
+      if (view === activeView) return;
+      
+      if (unsavedChanges && activeView === "settings") {
+          setDialog({
+              open: true,
+              title: "Unsaved Changes",
+              description: "You have unsaved changes in Settings. Switching tabs will discard them. Are you sure?",
+              type: "danger",
+              confirmLabel: "Discard Changes",
+              onConfirm: () => {
+                  setUnsavedChanges(false);
+                  setActiveView(view);
+                  setDialog(d => ({ ...d, open: false }));
+              },
+              onCancel: () => setDialog(d => ({ ...d, open: false }))
+          });
+      } else {
+          setActiveView(view);
+      }
+  };
+
+  const showMessage = (title: string, msg: string, type: "success" | "neutral" = "neutral") => {
+      setDialog({
+          open: true,
+          title,
+          description: msg,
+          type,
+          confirmLabel: "Close",
+          onConfirm: () => setDialog(d => ({ ...d, open: false })),
+          cancelLabel: undefined,
+          onCancel: undefined // Hides cancel button
+      });
   };
 
   const confirmLeaveNetwork = async () => {
@@ -389,7 +468,7 @@ export default function App() {
   /* Derived State */
   const myPeers = peers.filter(p => p.is_trusted);
   const untrustedPeers = peers.filter(p => !p.is_trusted);
-  const isConnected = myPeers.length > 0; // Heuristic: If we have trusted peers, we are in a 'real' cluster
+  const isConnected = true; // Always "connected" to local discovery at least. Or use myPeers.length > 0 if that implies connection.
 
   // Group untrusted by network name
   const nearbyNetworks: NearbyNetwork[] = [];
@@ -399,7 +478,6 @@ export default function App() {
       // Skip own network
       // if (p.network_name === myNetworkName) return;
 
-      
       const name = p.network_name || "Unidentified";
       if (!grouped[name]) grouped[name] = [];
       grouped[name].push(p);
@@ -423,88 +501,63 @@ export default function App() {
 
   return (
     <div className={clsx(rootThemeClass, "min-h-screen w-full bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.10),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(99,102,241,0.10),transparent_50%)] dark:bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.12),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(244,63,94,0.10),transparent_50%)] md:h-screen md:overflow-hidden")}>
+      
+      <Dialog {...dialog} />
+
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 md:h-full md:min-h-0 md:px-6">
         {/* Custom titlebar drag region */}
         <div className="drag-region h-[10px] w-full rounded-t-3xl" />
 
         {/* Header */}
-        <Card className="no-drag overflow-hidden">
-          <div className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">UCP</div>
-                  {isConnected ? (
-                    <Badge tone="good">
-                      <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                      Connected
-                    </Badge>
-                  ) : (
-                    <Badge tone="warn">
-                      <span className="inline-flex h-2 w-2 rounded-full bg-amber-500" />
-                      No Peers
-                    </Badge>
-                  )}
-                </div>
-                <div className="mt-0.5 text-xs text-zinc-600 dark:text-zinc-400">
-                  {isConnected 
-                      ? `Secure Cluster: ${myNetworkName}` 
-                      : "Share your PIN to link devices."}
-                </div>
-              </div>
+        <header className="flex items-center justify-between mb-4 shrink-0 px-2">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-blue-500 shadow-lg shadow-emerald-500/20">
+              <Wifi className="h-5 w-5 text-white" />
             </div>
-
-            <div className="flex flex-wrap items-center gap-2 md:justify-end">
-              <div className="inline-flex rounded-2xl border border-zinc-900/10 bg-white/60 p-1 dark:border-white/10 dark:bg-white/5">
-                <button
-                  className={clsx(
-                    "no-drag inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition",
-                    activeView === "devices"
-                      ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
-                      : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-300 dark:hover:bg-white/5"
-                  )}
-                  onClick={() => setActiveView("devices")}
-                >
-                  <MonitorIcon />
-                  Devices
-                </button>
-                <button
-                  className={clsx(
-                    "no-drag inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-medium transition",
-                    activeView === "history"
-                      ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
-                      : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-300 dark:hover:bg-white/5"
-                  )}
-                  onClick={() => setActiveView("history")}
-                >
-                  <History className="h-4 w-4" />
-                  History
-                </button>
-              </div>
-
-              <IconButton label="Settings" onClick={() => setActiveView("settings")} variant="default">
-                <Settings className="h-5 w-5 text-zinc-700 dark:text-zinc-200" />
-              </IconButton>
-
-              <div className="h-8 w-px bg-zinc-900/10 dark:bg-white/10 mx-1" />
-
-              <Button
-                variant="danger"
-                onClick={() => setLeaveOpen(true)}
-                className="no-drag w-11 px-0"
-              >
-                 <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+                UCP
+            </h1>
           </div>
-        </Card>
+
+          <div className="flex items-center gap-2">
+            <IconButton
+              label="Devices"
+              active={activeView === "devices"}
+              onClick={() => handleViewChange("devices")}
+            >
+               <Monitor className="h-5 w-5" />
+            </IconButton>
+            
+            <IconButton
+              label="History"
+              active={activeView === "history"}
+              onClick={() => handleViewChange("history")}
+            >
+               <History className="h-5 w-5" />
+            </IconButton>
+            
+            <IconButton
+              label="Settings"
+              active={activeView === "settings"}
+              onClick={() => handleViewChange("settings")}
+            >
+               <Settings className="h-5 w-5" />
+            </IconButton>
+            
+            <div className="mx-2 h-6 w-px bg-zinc-200 dark:bg-zinc-700" />
+             
+            <IconButton
+                label="Leave & Reset"
+                danger
+                onClick={() => setLeaveOpen(true)}
+            >
+                <LogOut className="h-5 w-5" />
+            </IconButton>
+          </div>
+        </header>
 
         {/* Content */}
-        <div className="mt-2 flex-1 min-h-0 overflow-hidden">
-           {/* In the design, this was a grid with sidebar. For simplicity we can just render the Main Panel full width for now, or match the sidebar structure if desired. Let's keep it simple full width since the sidebar was mostly Demo Controls */}
+        <div className="flex-1 min-h-0 overflow-hidden rounded-3xl border border-zinc-200 bg-white/50 shadow-sm backdrop-blur-xl dark:border-white/5 dark:bg-zinc-900/50">
            <div className="no-drag h-full">
              {activeView === "devices" ? (
                <DevicesView
@@ -515,7 +568,6 @@ export default function App() {
                  peers={myPeers}
                  nearby={nearbyNetworks}
                  onJoin={(netName) => {
-                     // Find a peer in that network to join
                      const group = grouped[netName];
                      if (group && group.length > 0) {
                          startJoinFlow(netName, group[0].id);
@@ -527,7 +579,7 @@ export default function App() {
              ) : activeView === "history" ? (
                <HistoryView items={clipboardHistory} onCopy={copyToClipboard} />
              ) : (
-               <SettingsView />
+               <SettingsView onDirtyChange={setUnsavedChanges} showMessage={showMessage} />
              )}
            </div>
         </div>
@@ -853,20 +905,354 @@ function HistoryView({ items, onCopy }: { items: HistoryItem[]; onCopy: (txt: st
   );
 }
 
-function SettingsView() {
+function SettingsView({ 
+    onDirtyChange,
+    showMessage 
+}: { 
+    onDirtyChange: (dirty: boolean) => void;
+    showMessage: (title: string, msg: string, type: "success" | "neutral") => void;
+}) {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [initialSettings, setInitialSettings] = useState<AppSettings | null>(null); // For deep compare if needed
+  
+  const [networkName, setNetworkName] = useState("");
+  const [networkPin, setNetworkPin] = useState("");
+  const [initialName, setInitialName] = useState("");
+  const [initialPin, setInitialPin] = useState("");
+
+  const [provName, setProvName] = useState("");
+  const [provPin, setProvPin] = useState("");
+  
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      invoke<AppSettings>("get_settings"),
+      invoke<string>("get_network_name"),
+      invoke<string>("get_network_pin")
+    ]).then(([s, n, p]) => {
+      setSettings(s);
+      setInitialSettings(JSON.parse(JSON.stringify(s)));
+      setNetworkName(n);
+      setNetworkPin(p);
+      setInitialName(n);
+      setInitialPin(p);
+      setProvName(n); 
+      setProvPin(p);
+      setLoading(false);
+    });
+  }, []);
+
+  // Dirty Check Effect
+  useEffect(() => {
+     if (!settings || !initialSettings) return;
+     
+     // Check basic settings
+     const basicDirty = JSON.stringify(settings) !== JSON.stringify(initialSettings);
+     
+     // Check Provisioning Fields check:
+     // If we are in "provisioned" mode, and the provName/provPin differ from what is currently active/saved
+     let provDirty = false;
+     if (settings.cluster_mode === "provisioned") {
+         // However, provName/Pin changes are local to inputs until saved.
+         // If I change provName, is it dirty vs Initial State?
+         // YES. Initial State had `provName == networkName`.
+         // If `provName !== initialName` or `provPin !== initialPin`, it is dirty.
+         provDirty = (provName !== initialName || provPin !== initialPin);
+     }
+     
+     onDirtyChange(basicDirty || provDirty);
+  }, [settings, initialSettings, provName, provPin, initialName, initialPin]);
+
+  const handleSave = async () => {
+    if (!settings) return;
+    setSaving(true);
+    try {
+      // 1. Save general settings
+      await invoke("save_settings", { settings });
+      
+      // 2. Handle Provisioning Changes
+      let msg = "Settings saved successfully.";
+      
+      if (settings.cluster_mode === "provisioned") {
+         // Validate
+         if (provName.trim().includes(" ")) {
+             showMessage("Validation Error", "Cluster Name cannot contain spaces.", "neutral");
+             setSaving(false);
+             return;
+         }
+         if (provPin.length < 6) {
+             showMessage("Validation Error", "PIN must be at least 6 characters.", "neutral");
+             setSaving(false);
+             return;
+         }
+         
+         if (provName !== networkName || provPin !== networkPin) {
+             await invoke("set_network_identity", { name: provName, pin: provPin });
+             // Reload network data
+             const n = await invoke<string>("get_network_name");
+             const p = await invoke<string>("get_network_pin");
+             setNetworkName(n);
+             setNetworkPin(p);
+             setInitialName(n);
+             setInitialPin(p);
+             msg = "Network Identity Updated. You may need to repair your devices.";
+         }
+      } else {
+        if (initialSettings && initialSettings.cluster_mode === "provisioned") {
+            await invoke("regenerate_network_identity");
+            // Reload network data
+            const n = await invoke<string>("get_network_name");
+            const p = await invoke<string>("get_network_pin");
+            setNetworkName(n);
+            setNetworkPin(p);
+            setProvName(n);
+            setProvPin(p);
+            setInitialName(n);
+            setInitialPin(p);
+            msg = "Network Identity has been reset to random.";
+        }
+      }
+      
+      // Update initial state
+      setInitialSettings(JSON.parse(JSON.stringify(settings)));
+      onDirtyChange(false);
+      
+      showMessage("Success", msg, "success");
+
+    } catch (e) {
+      showMessage("Error", "Failed to save: " + e, "neutral");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !settings) return <div className="p-10 text-center text-zinc-500">Loading settings...</div>;
+
   return (
-    <div className="p-4 text-center text-zinc-500">
-        Settings are coming soon.
+    <div className="flex h-full flex-col gap-4 overflow-y-auto pb-4">
+      {/* Device Identity */}
+      <Card className="p-4">
+        <SectionHeader
+          icon={<Monitor className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+          title="Device Settings"
+          subtitle="Identity and Discovery."
+        />
+        <div className="mt-4 px-1">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Device Name</label>
+            <input
+              className="h-10 rounded-xl border border-zinc-900/10 bg-white px-3 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-white/5 dark:text-zinc-50"
+              placeholder="Default: Hostname"
+              value={settings.custom_device_name || ""}
+              onChange={(e) => setSettings({ ...settings, custom_device_name: e.target.value || null })}
+            />
+            <div className="text-[10px] text-zinc-500">Visible to other devices in the cluster.</div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Cluster Mode */}
+      <Card className="p-4">
+         <SectionHeader
+          icon={<ShieldCheck className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+          title="Cluster Mode"
+          subtitle="Manage how this device connects."
+        />
+        <div className="mt-4 flex flex-col gap-4 px-1">
+            <div className="flex items-center gap-4 rounded-xl bg-zinc-900/5 p-1 dark:bg-white/5">
+                <button
+                    className={clsx(
+                        "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
+                        settings.cluster_mode === "auto" 
+                            ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50" 
+                            : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-400"
+                    )}
+                    onClick={() => setSettings({ ...settings, cluster_mode: "auto" })}
+                >
+                    Autogenerated
+                </button>
+                <button
+                    className={clsx(
+                        "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
+                        settings.cluster_mode === "provisioned" 
+                            ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50" 
+                            : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-400"
+                    )}
+                    onClick={() => setSettings({ ...settings, cluster_mode: "provisioned" })}
+                >
+                    Provisioned
+                </button>
+            </div>
+
+            {settings.cluster_mode === "provisioned" && (
+                <div className="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 bg-white/50 p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster Name (No Spaces)</label>
+                        <input
+                        className="h-10 rounded-xl border border-zinc-900/10 bg-white px-3 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
+                        value={provName}
+                        onChange={(e) => setProvName(e.target.value.replace(/\s/g, ""))}
+                        />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster PIN (Min 6 chars)</label>
+                        <input
+                        className="h-10 rounded-xl border border-zinc-900/10 bg-white px-3 font-mono text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
+                        value={provPin}
+                        onChange={(e) => setProvPin(e.target.value)}
+                        />
+                    </div>
+                </div>
+            )}
+            
+            {settings.cluster_mode === "auto" && (
+                 <div className="text-xs text-zinc-500">
+                    Cluster identity is randomly generated. To reset, use "Leave & Reset" in the header.
+                 </div>
+            )}
+        </div>
+      </Card>
+      
+      {/* Synchronization */}
+      <Card className="p-4">
+        <SectionHeader
+          icon={<Wifi className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+          title="Synchronization"
+          subtitle="Control clipboard flow."
+        />
+        <div className="mt-4 px-1 space-y-4">
+             <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Send</div>
+                    <div className="text-xs text-zinc-500">Automatically broadcast local copies.</div>
+                </div>
+                {/* Simple Toggle Switch */}
+                <button 
+                    onClick={() => setSettings({...settings, auto_send: !settings.auto_send})}
+                    className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.auto_send ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+                >
+                    <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.auto_send ? "translate-x-6" : "translate-x-1")} />
+                </button>
+             </div>
+             
+             {!settings.auto_send && (
+                 <div className="rounded-xl border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
+                     <div className="flex items-center justify-between opacity-50 cursor-not-allowed">
+                         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Global Shortcut (Send)</div>
+                         <div className="text-xs font-mono bg-zinc-100 px-2 py-1 rounded dark:bg-zinc-800">Ctrl+Alt+C</div>
+                     </div>
+                     <div className="mt-1 text-[10px] text-zinc-400 text-center">Config coming later</div>
+                 </div>
+             )}
+
+             <div className="h-px bg-zinc-900/5 dark:bg-white/5" />
+
+             <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Receive</div>
+                    <div className="text-xs text-zinc-500">Automatically apply remote clips.</div>
+                </div>
+                <button 
+                    onClick={() => setSettings({...settings, auto_receive: !settings.auto_receive})}
+                    className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.auto_receive ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+                >
+                    <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.auto_receive ? "translate-x-6" : "translate-x-1")} />
+                </button>
+             </div>
+        </div>
+      </Card>
+      
+      {/* Notifications */}
+      <Card className="p-4">
+        <SectionHeader
+          icon={<Info className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+          title="Notifications"
+          subtitle="Choose what to see."
+        />
+        <div className="mt-4 px-1 space-y-3">
+            {[
+                { label: "Device Joins", key: "device_join" as const },
+                { label: "Device Leaves", key: "device_leave" as const },
+                { label: "Data Sent", key: "data_sent" as const },
+                { label: "Data Received", key: "data_received" as const },
+            ].map(item => (
+                <div key={item.key} className="flex items-center justify-between">
+                    <div className="text-sm text-zinc-700 dark:text-zinc-300">{item.label}</div>
+                    <button 
+                        onClick={() => setSettings({
+                            ...settings, 
+                            notifications: { ...settings.notifications, [item.key]: !settings.notifications[item.key] }
+                        })}
+                        className={clsx("relative h-5 w-9 rounded-full transition-colors", settings.notifications[item.key] ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+                    >
+                         <span className={clsx("block h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform", settings.notifications[item.key] ? "translate-x-5" : "translate-x-1")} />
+                    </button>
+                </div>
+            ))}
+        </div>
+      </Card>
+      
+      {/* Save Action */}
+      <div className="flex justify-end pt-4">
+          <Button variant="primary" onClick={handleSave} disabled={saving} iconLeft={<CheckCircle2 className="h-4 w-4" />}>
+              {saving ? "Saving..." : "Save Changes"}
+          </Button>
+      </div>
     </div>
   );
 }
 
 
-/* --- Tiny Icons --- */
 
-function MonitorIcon() {
-  return <Monitor className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />;
+function Dialog({ 
+  open, 
+  title, 
+  description, 
+  onConfirm, 
+  onCancel, 
+  confirmLabel = "Confirm", 
+  cancelLabel = "Cancel",
+  type = "neutral" 
+}: { 
+  open: boolean; 
+  title: string; 
+  description: string; 
+  onConfirm: () => void; 
+  onCancel?: () => void; 
+  confirmLabel?: string; 
+  cancelLabel?: string;
+  type?: "neutral" | "danger" | "success";
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-zinc-900/10 dark:bg-zinc-900 dark:ring-white/10">
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h3>
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{description}</p>
+        </div>
+        <div className="flex justify-end gap-3 bg-zinc-50 px-6 py-4 dark:bg-zinc-800/50">
+          {onCancel && (
+            <Button variant="default" onClick={onCancel}>
+              {cancelLabel}
+            </Button>
+          )}
+          <Button 
+            variant={type === "danger" ? "danger" : "primary"} 
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
+
+/* --- Tiny Icons --- */
 
 function CopyMini({ text }: { text: string }) {
   return (

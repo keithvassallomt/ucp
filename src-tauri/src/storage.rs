@@ -254,3 +254,101 @@ pub fn reset_network_state(app: &AppHandle) {
         }
     }
 }
+
+pub fn regenerate_identity(app: &AppHandle) -> (String, String) {
+    let path_resolver = app.path();
+    // 1. Delete existing Name/PIN files
+    if let Ok(path) = path_resolver.resolve("network_name", BaseDirectory::AppConfig) {
+        if path.exists() {
+            let _ = fs::remove_file(path);
+        }
+    }
+    if let Ok(path) = path_resolver.resolve("network_pin", BaseDirectory::AppConfig) {
+        if path.exists() {
+            let _ = fs::remove_file(path);
+        }
+    }
+
+    // 2. Load (which generates new ones if missing)
+    let new_name = load_network_name(app);
+    let new_pin = load_network_pin(app);
+
+    (new_name, new_pin)
+}
+// --- Settings Persistance ---
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct NotificationSettings {
+    pub device_join: bool,
+    pub device_leave: bool,
+    pub data_sent: bool,
+    pub data_received: bool,
+}
+
+impl Default for NotificationSettings {
+    fn default() -> Self {
+        Self {
+            device_join: true,
+            device_leave: true,
+            data_sent: false,
+            data_received: false,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct AppSettings {
+    pub custom_device_name: Option<String>,
+    pub cluster_mode: String, // "auto" or "provisioned"
+    pub auto_send: bool,
+    pub auto_receive: bool,
+    pub notifications: NotificationSettings,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            custom_device_name: None,
+            cluster_mode: "auto".to_string(),
+            auto_send: true,
+            auto_receive: true,
+            notifications: NotificationSettings::default(),
+        }
+    }
+}
+
+pub fn load_settings(app: &AppHandle) -> AppSettings {
+    let path_resolver = app.path();
+    let path = match path_resolver.resolve("settings.json", BaseDirectory::AppConfig) {
+        Ok(p) => p,
+        Err(_) => return AppSettings::default(),
+    };
+
+    if !path.exists() {
+        return AppSettings::default();
+    }
+
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => AppSettings::default(),
+    }
+}
+
+pub fn save_settings(app: &AppHandle, settings: &AppSettings) {
+    let path_resolver = app.path();
+    let path = match path_resolver.resolve("settings.json", BaseDirectory::AppConfig) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to resolve settings path: {}", e);
+            return;
+        }
+    };
+
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    if let Ok(json) = serde_json::to_string_pretty(settings) {
+        let _ = fs::write(path, json);
+    }
+}
