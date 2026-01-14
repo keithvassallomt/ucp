@@ -23,6 +23,33 @@ use tauri_plugin_notification::NotificationExt;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 // Helper to broadcast a new peer to all known peers (Gossip)
+fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str) {
+    // 1. Native Plugin (All OS)
+    if let Err(e) = app_handle.notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .sound("Ping")
+        .show() 
+    {
+        eprintln!("[Notification Error] Native plugin failed: {}", e);
+    }
+    
+    // 2. Linux Workaround (notify-send)
+    #[cfg(target_os = "linux")]
+    {
+        println!("[Notification] Linux detected. Attempting notify-send workaround...");
+        match std::process::Command::new("notify-send")
+            .arg(title)
+            .arg(body)
+            .spawn() 
+        {
+            Ok(_) => println!("[Notification] notify-send executed successfully."),
+            Err(e) => eprintln!("[Notification Error] notify-send failed: {}", e),
+        }
+    }
+}
+
 fn gossip_peer(
     new_peer: &Peer,
     state: &AppState,
@@ -315,14 +342,7 @@ async fn probe_ip(
             {
                 if state.settings.lock().unwrap().notifications.device_join {
                     println!("[Notification] Triggering 'New Device Found' for manual peer: {}", peer.hostname);
-                    if let Err(e) = app_handle.notification()
-                        .builder()
-                        .title("New Device Found")
-                        .body(format!("{} has joined your cluster", peer.hostname))
-                        .sound("Ping")
-                        .show() {
-                            eprintln!("[Notification Error] Failed to show manual peer notification: {}", e);
-                        }
+                    send_notification(&app_handle, "New Device Found", &format!("{} has joined your cluster", peer.hostname));
                 } else {
                     println!("[Notification] Device join notification suppressed by settings for manual peer: {}", peer.hostname);
                 }
@@ -718,14 +738,7 @@ pub fn run() {
                                         if should_notify {
                                             if d_state.settings.lock().unwrap().notifications.device_join {
                                                 println!("[Notification] Triggering 'New Device Found' for discovered peer: {}", peer.hostname);
-                                               if let Err(e) = d_handle.notification()
-                                                   .builder()
-                                                   .title("New Device Found")
-                                                   .body(format!("{} has joined your cluster", peer.hostname))
-                                                   .sound("Ping")
-                                                   .show() {
-                                                       eprintln!("[Notification Error] Failed to show discovered peer notification: {}", e);
-                                                   }
+                                                send_notification(&d_handle, "New Device Found", &format!("{} has joined your cluster", peer.hostname));
                                             } else {
                                                 println!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
                                             }
