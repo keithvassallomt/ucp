@@ -317,7 +317,7 @@ async fn probe_ip(
                     let _ = app_handle.notification()
                         .builder()
                         .title("New Device Found")
-                        .body(format!("{} has joined the network", peer.hostname))
+                        .body(format!("{} has joined your cluster", peer.hostname))
                         .show();
                 }
             }
@@ -700,11 +700,20 @@ pub fn run() {
 
                                     // Trigger Notification
                                     {
-                                        if d_state.settings.lock().unwrap().notifications.device_join {
+                                        let should_notify = {
+                                            let local_net = d_state.network_name.lock().unwrap();
+                                            if let Some(remote_net) = &peer.network_name {
+                                                *remote_net == *local_net
+                                            } else {
+                                                false
+                                            }
+                                        };
+
+                                        if should_notify && d_state.settings.lock().unwrap().notifications.device_join {
                                            let _ = d_handle.notification()
                                                .builder()
                                                .title("New Device Found")
-                                               .body(format!("{} has joined the network", peer.hostname))
+                                               .body(format!("{} has joined your cluster", peer.hostname))
                                                .show();
                                         }
                                     }
