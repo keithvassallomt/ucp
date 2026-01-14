@@ -50,6 +50,19 @@ fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str) {
     }
 }
 
+fn check_and_notify_leave(app_handle: &tauri::AppHandle, state: &AppState, peer: &Peer) {
+    let notifications = state.settings.lock().unwrap().notifications.clone();
+    if notifications.device_leave {
+        let local_net = state.network_name.lock().unwrap().clone();
+        if let Some(remote_net) = &peer.network_name {
+            if *remote_net == local_net {
+                println!("[Notification] Device Left: {}", peer.hostname);
+                send_notification(app_handle, "Device Disconnected", &format!("{} has left the cluster", peer.hostname));
+            }
+        }
+    }
+}
+
 fn gossip_peer(
     new_peer: &Peer,
     state: &AppState,
@@ -760,7 +773,10 @@ pub fn run() {
                                 println!("[Discovery] Service Removed: {} -> ID: {}", fullname, id);
                                 {
                                     let mut peers = d_state.peers.lock().unwrap();
-                                    peers.remove(&id);
+                                    if let Some(peer) = peers.remove(&id) {
+                                         drop(peers); // Drop lock before notifying
+                                         check_and_notify_leave(&d_handle, &d_state, &peer);
+                                    }
                                 }
                                 let _ = d_handle.emit("peer-remove", &id);
                             }
@@ -1155,7 +1171,10 @@ pub fn run() {
                                     }
                                     {
                                         let mut peers = listener_state.peers.lock().unwrap();
-                                        peers.remove(&target_id);
+                                        if let Some(peer) = peers.remove(&target_id) {
+                                            drop(peers);
+                                            check_and_notify_leave(&listener_handle, &listener_state, &peer);
+                                        }
                                     }
                                     let _ = listener_handle.emit("peer-remove", &target_id);
                                 }
@@ -1252,12 +1271,15 @@ pub fn run() {
                     for (id, p) in peers_lock.iter() {
                         if now - p.last_seen > timeout {
                             println!("Pruning stale peer: {} ({}) - Last seen {}s ago", p.hostname, id, now - p.last_seen);
-                            to_remove.push((id.clone(), p.is_trusted));
+                            to_remove.push(p.clone());
                         }
                     }
 
                     if !to_remove.is_empty() {
-                         for (id, was_trusted) in to_remove {
+                         for peer in to_remove {
+                             let id = peer.id.clone();
+                             let was_trusted = peer.is_trusted;
+
                              // Always remove from RUNTIME peers (UI)
                              peers_lock.remove(&id);
 
@@ -1267,6 +1289,7 @@ pub fn run() {
                                  kp_lock.remove(&id);
                              }
                              
+                             check_and_notify_leave(&prune_handle, &prune_state, &peer);
                              let _ = prune_handle.emit("peer-remove", &id);
                          }
                          save_known_peers(prune_handle.app_handle(), &kp_lock);
