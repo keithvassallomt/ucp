@@ -512,11 +512,6 @@ export default function App() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-      // In Tauri we can write to clipboard via backend or frontend API
-      // Using generic navigator.clipboard for simplicity if allowed context
-      navigator.clipboard.writeText(text);
-  };
 
   const submitManualPeer = async () => {
       if (!manualIp) return;
@@ -646,7 +641,7 @@ export default function App() {
                  onAddManual={() => setAddManualOpen(true)}
                />
              ) : activeView === "history" ? (
-               <HistoryView items={clipboardHistory} onCopy={copyToClipboard} />
+               <HistoryView items={clipboardHistory} />
              ) : (
                <SettingsView onDirtyChange={setUnsavedChanges} showMessage={showMessage} />
              )}
@@ -952,7 +947,7 @@ function DevicesView({
   );
 }
 
-function HistoryView({ items, onCopy }: { items: HistoryItem[]; onCopy: (txt: string) => void }) {
+function HistoryView({ items }: { items: HistoryItem[] }) {
   const [myHostname, setMyHostname] = useState<string>("");
 
   useEffect(() => {
@@ -967,6 +962,14 @@ function HistoryView({ items, onCopy }: { items: HistoryItem[]; onCopy: (txt: st
           console.error("Failed to send:", e);
           alert("Failed to send: " + e);
       }
+  };
+
+  const handleLocalCopy = async (text: string) => {
+     try {
+         await invoke("set_local_clipboard", { text });
+     } catch (e) {
+         console.error("Failed to set local clipboard:", e);
+     }
   };
 
   const handleDelete = async (id: string) => {
@@ -1028,7 +1031,7 @@ function HistoryView({ items, onCopy }: { items: HistoryItem[]; onCopy: (txt: st
                 </div>
 
                 <div className="flex items-center justify-end gap-2">
-                  <IconButton label="Copy to Clipboard" onClick={() => onCopy(it.text)}>
+                  <IconButton label="Copy to Clipboard" onClick={() => handleLocalCopy(it.text)}>
                       <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
                   </IconButton>
                   

@@ -754,6 +754,12 @@ async fn delete_history_item(
     Ok(())
 }
 
+#[tauri::command]
+async fn set_local_clipboard(text: String) -> Result<(), String> {
+    clipboard::set_clipboard(text);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
@@ -1576,6 +1582,7 @@ pub fn run() {
             regenerate_network_identity,
             send_clipboard,
             delete_history_item,
+            set_local_clipboard,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
