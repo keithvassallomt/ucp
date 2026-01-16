@@ -62,8 +62,24 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                         *last_global = text.clone();
                     }
 
+                    // Construct Payload Object
+                    let local_id = { state.local_device_id.lock().unwrap().clone() };
+                    let hostname = crate::get_hostname_internal();
+                    let msg_id = uuid::Uuid::new_v4().to_string();
+                    let ts = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    let payload_obj = crate::protocol::ClipboardPayload {
+                        id: msg_id.clone(),
+                        text: text.clone(),
+                        timestamp: ts,
+                        sender: hostname,
+                    };
+
                     // Emit to frontend (local notification)
-                    let _ = app_handle.emit("clipboard-change", &text);
+                    let _ = app_handle.emit("clipboard-change", &payload_obj);
 
                     // Check Auto-Send Setting
                     let auto_send = { state.settings.lock().unwrap().auto_send };
@@ -79,8 +95,11 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                             let mut key_arr = [0u8; 32];
                             if key.len() == 32 {
                                 key_arr.copy_from_slice(key);
+                                // Serialize Payload
+                                let json_payload =
+                                    serde_json::to_vec(&payload_obj).unwrap_or_default();
                                 // Encrypt
-                                match crypto::encrypt(&key_arr, text.as_bytes()) {
+                                match crypto::encrypt(&key_arr, &json_payload) {
                                     Ok(cipher) => Some(cipher),
                                     Err(e) => {
                                         tracing::error!("Failed to encrypt clipboard: {}", e);

@@ -1,8 +1,16 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ClipboardPayload {
+    pub id: String,
+    pub text: String,
+    pub timestamp: u64,
+    pub sender: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Message {
-    Clipboard(Vec<u8>),
+    Clipboard(Vec<u8>), // Encrypted ClipboardPayload
     PairRequest {
         msg: Vec<u8>,
         device_id: String,
@@ -22,4 +30,6 @@ pub enum Message {
     PeerDiscovery(crate::peer::Peer),
     // Broadcast removal of a peer (kick/leave)
     PeerRemoval(String), // Payload is device_id
+    // Broadcast deletion of history item
+    HistoryDelete(String), // Payload is item ID
 }

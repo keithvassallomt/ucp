@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { 
   Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2, LogOut, 
   Settings, Wifi, Lock, Unlock, AlertTriangle, Info, CheckCircle2,
-  ChevronDown, ChevronRight
+  ChevronDown, ChevronRight, ArrowUp, ArrowDown, Send
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -32,10 +32,22 @@ type NearbyNetwork = {
 type HistoryItem = {
     id: string;
     origin: "local" | "remote";
-    device: string;
-    ts: string;
+    device: string; // The sender's hostname
+    ts: number; // Unix timestamp in seconds
     text: string;
 };
+
+// Simple Time Ago Helper
+function timeAgo(ts: number): string {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - ts;
+    if (diff < 10) return "Just now";
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return new Date(ts * 1000).toLocaleDateString();
+}
+
 
 interface NotificationSettings {
   device_join: boolean;
@@ -343,17 +355,56 @@ export default function App() {
       });
     });
 
-    const unlistenClipboard = listen<string>("clipboard-change", (event) => {
-      const newItem: HistoryItem = {
-          id: Math.random().toString(36).substring(7),
-          origin: "remote", // TODO: Distinguish local/remote from event? local changes handled by watcher?
-          device: "Remote Peer", // TODO: Event should include sender ID
-          ts: "Just now",
-          text: event.payload
-      };
-      setClipboardHistory((prev) => [newItem, ...prev].slice(0, 50));
+    // Listen for Clipboard Changes
+    // Payload can be string (Legacy) or Object (New)
+    const unlistenClipboard = listen<string | { id: string, text: string, timestamp: number, sender: string }>("clipboard-change", (event) => {
+      let newItem: HistoryItem;
+
+      if (typeof event.payload === 'string') {
+           // Legacy / Simple Text
+           newItem = {
+              id: Math.random().toString(36).substring(7),
+              origin: "remote", // Assume remote for simple strings unless we track local state better? Actually local changes emit too.
+              // Wait, local changes emit clipboard-change too!
+              // In legacy, we can't distinguish easy without text comparison?
+              // For now, let's just mark legacy string events as "Unknown" origin or "Received" if unsure.
+              device: "Unknown",
+              ts: Math.floor(Date.now() / 1000),
+              text: event.payload
+          };
+      } else {
+          // Rich Payload
+          const p = event.payload;
+          // Determine origin based on sender
+          // If sender is MY hostname, it's local (sent). If not, remote (received).
+          // We can use a simpler heuristic: If I emitted it, "clipboard-change" is fired for MY changes too.
+          // Wait, lib.rs emits "clipboard-change" for BOTH locally detected changes and decrypted remote ones.
+          // In "clipboard::start_monitor", we calculate `hostname`.
+          // We can get our own hostname in `useEffect` to compare?
+          // Ideally we check if `p.sender === myHostname`.
+          newItem = {
+              id: p.id,
+              origin: "remote", // Default, updated below in effect if possible, or just render based on sender name?
+              // Actually, simpler: Pass "myHostname" to HistoryView or usage.
+              // For data model, let's store the sender.
+              device: p.sender,
+              ts: p.timestamp,
+              text: p.text
+          };
+      }
+
+      setClipboardHistory((prev) => {
+          // Dedupe by ID if exists
+          if (prev.find(i => i.id === newItem.id)) return prev;
+          return [newItem, ...prev].slice(0, 50);
+      });
     });
-    
+
+    const unlistenDelete = listen<string>("history-delete", (event) => {
+        const idToDelete = event.payload;
+        setClipboardHistory((prev) => prev.filter(i => i.id !== idToDelete));
+    });
+
     const unlistenRemove = listen<string>("peer-remove", (event) => {
         setPeers((prev) => prev.filter(p => p.id !== event.payload));
     });
@@ -374,6 +425,7 @@ export default function App() {
       unlistenRemove.then((f) => f());
       unlistenReset.then((f) => f());
       unlistenUpdate.then((f) => f());
+      unlistenDelete.then((f) => f());
     };
   }, []);
 
@@ -901,6 +953,40 @@ function DevicesView({
 }
 
 function HistoryView({ items, onCopy }: { items: HistoryItem[]; onCopy: (txt: string) => void }) {
+  const [myHostname, setMyHostname] = useState<string>("");
+
+  useEffect(() => {
+      invoke<string>("get_hostname").then(setMyHostname);
+  }, []);
+
+  const handleSend = async (text: string) => {
+      try {
+          await invoke("send_clipboard", { text });
+          // Note: The backend will emit `clipboard-change` which updates list
+      } catch (e) {
+          console.error("Failed to send:", e);
+          alert("Failed to send: " + e);
+      }
+  };
+
+  const handleDelete = async (id: string) => {
+      try {
+           // Delete locally first for instant feedback? 
+           // Or wait for event loopback? 
+           // Better wait or optimistic?
+           // The event `history-delete` is broadcasted. locally we might need to manual delete if backend doesn't loopback history-delete to self? 
+           // Messages are usually not looped back to self unless logic handles it.
+           // lib.rs `HistoryDelete` handler emits event. But `delete_history_item` ONLY sends to peers. 
+           // So we must manually update local state or emit local event in backend.
+           // BE logic: `delete_history_item` sends to peers. It does NOT emit local event.
+           // So we should delete from UI list directly here too.
+           await invoke("delete_history_item", { id });
+           // Optimistic Update is fine
+      } catch (e) {
+          console.error("Failed to delete:", e);
+      }
+  };
+
   return (
     <div className="space-y-5">
       <Card className="p-5">
@@ -908,11 +994,16 @@ function HistoryView({ items, onCopy }: { items: HistoryItem[]; onCopy: (txt: st
           icon={<Copy className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
           title="Clipboard history"
           subtitle="Recent entries."
-        //   right={<Button variant="danger" size="sm" iconLeft={<Trash2 className="h-4 w-4" />}>Clear</Button>}
         />
 
         <div className="mt-4 space-y-2">
-          {items.map((it) => (
+          {items.map((it) => {
+             const isMe = it.device === myHostname || it.device === "localhost" || it.origin === "local"; 
+             // Logic check: "origin" in item type is mostly placeholder now if we trust device name.
+             // If device name matches myHostname, it is "Sent" (Arrow Up).
+             // Else "Received" (Arrow Down).
+             
+             return (
             <div
               key={it.id}
               className="rounded-2xl border border-zinc-900/10 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5"
@@ -920,30 +1011,38 @@ function HistoryView({ items, onCopy }: { items: HistoryItem[]; onCopy: (txt: st
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={it.origin === "remote" ? "good" : "neutral"}>
-                      {it.origin === "remote" ? (
+                    <Badge tone={isMe ? "neutral" : "good"}>
+                      {isMe ? (
                         <>
-                          <Lock className="h-3.5 w-3.5" /> {it.device}
+                          <ArrowUp className="h-3.5 w-3.5" /> Sent
                         </>
                       ) : (
                         <>
-                          <Info className="h-3.5 w-3.5" /> Local copy
+                          <ArrowDown className="h-3.5 w-3.5" /> {it.device}
                         </>
                       )}
                     </Badge>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">{it.ts}</span>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">{timeAgo(it.ts)}</span>
                   </div>
                   <div className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-zinc-900 dark:text-zinc-50">{it.text}</div>
                 </div>
 
                 <div className="flex items-center justify-end gap-2">
-                  <Button size="sm" variant="primary" iconLeft={<Copy className="h-4 w-4" />} onClick={() => onCopy(it.text)}>
-                    Copy
-                  </Button>
+                  <IconButton label="Copy to Clipboard" onClick={() => onCopy(it.text)}>
+                      <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+                  </IconButton>
+                  
+                  <IconButton label="Send to Cluster" onClick={() => handleSend(it.text)}>
+                      <Send className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  </IconButton>
+
+                  <IconButton label="Delete Everywhere" onClick={() => handleDelete(it.id)}>
+                      <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                  </IconButton>
                 </div>
               </div>
             </div>
-          ))}
+          );})}
         </div>
       </Card>
     </div>

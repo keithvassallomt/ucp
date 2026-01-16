@@ -665,6 +665,95 @@ fn perform_factory_reset(app_handle: &tauri::AppHandle, state: &AppState, port: 
     let _ = app_handle.emit("network-reset", ());
 }
 
+#[tauri::command]
+async fn send_clipboard(
+    text: String,
+    state: tauri::State<'_, AppState>,
+    transport: tauri::State<'_, Transport>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    
+    // Manual Send Command
+    clipboard::set_clipboard(text.clone()); // Update local clipboard too? Yes, usually.
+    
+    // Construct Payload
+    let local_id = state.local_device_id.lock().unwrap().clone();
+    let hostname = get_hostname_internal();
+    let msg_id = uuid::Uuid::new_v4().to_string();
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+
+    let payload_obj = crate::protocol::ClipboardPayload {
+        id: msg_id.clone(),
+        text: text.clone(),
+        timestamp: ts,
+        sender: hostname,
+    };
+
+    // Emit local event so history updates
+    let _ = app_handle.emit("clipboard-change", &payload_obj);
+
+    // Encrypt & Send
+    let ck_lock = state.cluster_key.lock().unwrap();
+    if let Some(key) = ck_lock.as_ref() {
+        if key.len() == 32 {
+             let mut key_arr = [0u8; 32];
+             key_arr.copy_from_slice(key);
+             let json_payload = serde_json::to_vec(&payload_obj).map_err(|e| e.to_string())?;
+             
+             match crypto::encrypt(&key_arr, &json_payload) {
+                 Ok(cipher) => {
+                     let msg = Message::Clipboard(cipher);
+                     let data = serde_json::to_vec(&msg).map_err(|e| e.to_string())?;
+                     
+                     let peers = state.get_peers();
+                     for p in peers.values() {
+                         let addr = std::net::SocketAddr::new(p.ip, p.port);
+                         let transport_clone = (*transport).clone();
+                         let data_vec = data.clone();
+                         tauri::async_runtime::spawn(async move {
+                             let _ = transport_clone.send_message(addr, &data_vec).await;
+                         });
+                     }
+                     
+                     // Notify locally
+                     let notifications = state.settings.lock().unwrap().notifications.clone();
+                     if notifications.data_sent {
+                         send_notification(&app_handle, "Clipboard Sent", "Manual broadcast successful.");
+                     }
+                     
+                     Ok(())
+                 },
+                 Err(e) => Err(format!("Encryption failed: {}", e))
+             }
+        } else {
+            Err("Invalid Cluster Key".to_string())
+        }
+    } else {
+        Err("No Cluster Key set".to_string())
+    }
+}
+
+#[tauri::command]
+async fn delete_history_item(
+    id: String,
+    state: tauri::State<'_, AppState>,
+    transport: tauri::State<'_, Transport>,
+) -> Result<(), String> {
+    let msg = Message::HistoryDelete(id);
+    let data = serde_json::to_vec(&msg).map_err(|e| e.to_string())?;
+    
+    let peers = state.get_peers();
+    for p in peers.values() {
+         let addr = std::net::SocketAddr::new(p.ip, p.port);
+         let transport_clone = (*transport).clone();
+         let data_vec = data.clone();
+         tauri::async_runtime::spawn(async move {
+             let _ = transport_clone.send_message(addr, &data_vec).await;
+         });
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
@@ -940,53 +1029,82 @@ pub fn run() {
                                         key_arr.copy_from_slice(&key);
                                         match crypto::decrypt(&key_arr, &ciphertext).map_err(|e| e.to_string()) {
                                             Ok(plaintext) => {
-                                                if let Ok(text) = String::from_utf8(plaintext) {
-                                                    // Loop Check
-                                                    {
-                                                        let mut last = listener_state.last_clipboard_content.lock().unwrap();
-                                                        if *last == text { return; }
-                                                        *last = text.clone();
-                                                    }
-                                                    
-                                                    // Check Auto-Receive Setting
-                                                    tracing::debug!("Decrypted Clipboard: {}...", if text.len() > 20 { &text[0..20] } else { &text }); // Truncate for log
-                                                    
-                                                    // Set Clipboard (Dedupe check is inside set_clipboard)
-                                                    let auto_receiver = { listener_state.settings.lock().unwrap().auto_receive };
-                                                    if auto_receiver {
-                                                        clipboard::set_clipboard(text.clone());
-                                                    } else {
-                                                        let auto_send = { listener_state.settings.lock().unwrap().auto_send };
-                                                        if !auto_send {
-                                                            tracing::debug!("Auto-send disabled. Skipping broadcast.");
-                                                            return; // Use return to exit the async block, not continue
-                                                        }
-                                                    }
-                                                    
-                                                    let _ = listener_handle.emit("clipboard-change", &text);
+                                                // Try to parse as ClipboardPayload
+                                                let (text, id, ts, sender) = if let Ok(payload) = serde_json::from_slice::<crate::protocol::ClipboardPayload>(&plaintext) {
+                                                     (payload.text, payload.id, payload.timestamp, payload.sender)
+                                                } else if let Ok(text) = String::from_utf8(plaintext.clone()) {
+                                                     // Backward compatibility / Fallback
+                                                     (
+                                                         text,
+                                                         uuid::Uuid::new_v4().to_string(),
+                                                         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs(),
+                                                         "Unknown (Legacy)".to_string()
+                                                     )
+                                                } else {
+                                                     tracing::error!("Failed to parse decrypted clipboard payload.");
+                                                     return;
+                                                };
 
-                                                    // Notify
-                                                    let notifications = listener_state.settings.lock().unwrap().notifications.clone();
-                                                    if notifications.data_received {
-                                                        send_notification(&listener_handle, "Clipboard Received", "Content copied to clipboard");
+                                                // Loop Check
+                                                {
+                                                    let mut last = listener_state.last_clipboard_content.lock().unwrap();
+                                                    if *last == text { return; }
+                                                    *last = text.clone();
+                                                }
+                                                
+                                                // Check Auto-Receive Setting
+                                                tracing::debug!("Decrypted Clipboard from {}: {}...", sender, if text.len() > 20 { &text[0..20] } else { &text }); // Truncate for log
+                                                
+                                                // Set Clipboard (Dedupe check is inside set_clipboard)
+                                                let auto_receiver = { listener_state.settings.lock().unwrap().auto_receive };
+                                                if auto_receiver {
+                                                    clipboard::set_clipboard(text.clone());
+                                                } else {
+                                                    let auto_send = { listener_state.settings.lock().unwrap().auto_send };
+                                                    if !auto_send {
+                                                        tracing::debug!("Auto-send disabled. Skipping broadcast.");
+                                                        return; // Use return to exit the async block, not continue
                                                     }
+                                                }
+                                                
+                                                // Emit enriched event
+                                                let payload_obj = crate::protocol::ClipboardPayload {
+                                                    id,
+                                                    text: text.clone(),
+                                                    timestamp: ts,
+                                                    sender,
+                                                };
+                                                let _ = listener_handle.emit("clipboard-change", &payload_obj);
 
-                                                    // Relay
-                                                    let state_relay = listener_state.clone();
-                                                    let transport_relay = transport_inside.clone(); 
-                                                    let sender_addr = addr;
-                                                    let relay_text = text.clone();
-                                                    let relay_key_arr = key_arr; 
-                                                    
-                                                    // Re-encrypt for relay (fresh nonce)
-                                                    if let Ok(relay_ciphertext) = crypto::encrypt(&relay_key_arr, relay_text.as_bytes()).map_err(|e| e.to_string()) {
-                                                        let relay_data = serde_json::to_vec(&Message::Clipboard(relay_ciphertext)).unwrap_or_default();
-                                                        let peers = state_relay.get_peers();
-                                                        for p in peers.values() {
-                                                            let p_addr = std::net::SocketAddr::new(p.ip, p.port);
-                                                            if p_addr == sender_addr { continue; }
-                                                            let _ = transport_relay.send_message(p_addr, &relay_data).await;
-                                                        }
+                                                // Notify
+                                                let notifications = listener_state.settings.lock().unwrap().notifications.clone();
+                                                if notifications.data_received {
+                                                    send_notification(&listener_handle, "Clipboard Received", "Content copied to clipboard");
+                                                }
+
+                                                // Relay (Re-encrypting the RAW PLAINTEXT currently means legacy format if we don't switch to Payload)
+                                                // Ideally relay should reuse the Payload concept.
+                                                // For now, let's just relay the original ciphertext? 
+                                                // No, we need to re-encrypt with OUR nonce logic if we used that.
+                                                // Actually our crypto module generates random nonce and prepends it.
+                                                // So we CANNOT just relay ciphertext unless we know it's same key and valid nonce.
+                                                // Safe to re-encrypt payload.
+                                                
+                                                let state_relay = listener_state.clone();
+                                                let transport_relay = transport_inside.clone(); 
+                                                let sender_addr = addr;
+                                                let relay_key_arr = key_arr; 
+                                                
+                                                // Re-encrypt (Payload preferred)
+                                                let payload_bytes = serde_json::to_vec(&payload_obj).unwrap_or(plaintext);
+                                                
+                                                if let Ok(relay_ciphertext) = crypto::encrypt(&relay_key_arr, &payload_bytes).map_err(|e| e.to_string()) {
+                                                    let relay_data = serde_json::to_vec(&Message::Clipboard(relay_ciphertext)).unwrap_or_default();
+                                                    let peers = state_relay.get_peers();
+                                                    for p in peers.values() {
+                                                        let p_addr = std::net::SocketAddr::new(p.ip, p.port);
+                                                        if p_addr == sender_addr { continue; }
+                                                        let _ = transport_relay.send_message(p_addr, &relay_data).await;
                                                     }
                                                 }
                                             }
@@ -996,6 +1114,10 @@ pub fn run() {
                                        tracing::warn!("Received clipboard but no Cluster Key set!"); 
                                     }
                                 }
+                            }
+                            Message::HistoryDelete(id) => {
+                                tracing::info!("Received HistoryDelete for ID: {}", id);
+                                let _ = listener_handle.emit("history-delete", &id);
                             }
                             Message::PairRequest { msg, device_id } => {
                                 tracing::info!("Received PairRequest from {} ({}). Authenticating...", addr, device_id);
@@ -1452,6 +1574,8 @@ pub fn run() {
             save_settings,
             set_network_identity,
             regenerate_network_identity,
+            send_clipboard,
+            delete_history_item,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
