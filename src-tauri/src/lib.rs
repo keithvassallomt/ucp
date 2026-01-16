@@ -95,7 +95,7 @@ use tauri_plugin_notification::NotificationExt;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 // Helper to broadcast a new peer to all known peers (Gossip)
-fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str) {
+pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str) {
     // 1. Native Plugin (All OS)
     if let Err(e) = app_handle.notification()
         .builder()
@@ -392,10 +392,10 @@ async fn probe_ip(
     };
 
     let msg = Message::PeerDiscovery(my_peer);
-    let data = serde_json::to_vec(&msg).unwrap_or_default();
+    let _data = serde_json::to_vec(&msg).unwrap_or_default();
     
             tracing::debug!("Probing {}...", addr);
-            let mut stream = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200));
+            let stream = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200));
             if stream.is_ok() {
                tracing::debug!("Probe to {} SUCCESS!", addr);
                // Found a potential peer!

@@ -100,6 +100,18 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     if let Some(encrypted_data) = payload {
                         // Broadcast to peers
                         let peers = state.get_peers();
+
+                        if !peers.is_empty() {
+                            let notifications =
+                                state.settings.lock().unwrap().notifications.clone();
+                            if notifications.data_sent {
+                                crate::send_notification(
+                                    &app_handle,
+                                    "Clipboard Sent",
+                                    "Clipboard content broadcasted to cluster.",
+                                );
+                            }
+                        }
                         // Wrap in protocol message
                         let msg = Message::Clipboard(encrypted_data);
                         let data = serde_json::to_vec(&msg).unwrap_or_default();
