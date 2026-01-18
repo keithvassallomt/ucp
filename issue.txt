@@ -1,0 +1,122 @@
+# ClusterCut - macOS Clipboard Issue Summary
+
+## What ClusterCut Does
+
+ClusterCut is a cross-platform desktop application for secure clipboard synchronization
+over a local network. When you copy text on one device, it automatically appears on all
+other devices in your "cluster".
+
+Key features:
+- Encrypted clipboard sync using ChaCha20-Poly1305
+- Zero-config device discovery via mDNS
+- SPAKE2+ password-authenticated key exchange for secure pairing
+- QUIC transport for reliable networking
+- Works on macOS, Linux, and Windows
+
+## The Bug
+
+**Symptom**: On macOS, when ClusterCut is running with another device in the cluster:
+1. User copies text (e.g., in TextEdit)
+2. Text is successfully sent to other devices in the cluster
+3. BUT the local macOS clipboard is immediately cleared/empty
+4. User cannot paste - right-click "Paste" menu is disabled
+
+**When it started**: After commit 2a33d22 (app rename from UCP to ClusterCut),
+specifically after commit cf381ed which switched from using arboard directly to
+the tauri-plugin-clipboard-manager.
+
+## Root Cause Analysis
+
+The Tauri clipboard plugin (`tauri_plugin_clipboard_manager`) wraps arboard in a
+**single shared Mutex-protected instance**. When the clipboard monitor thread
+repeatedly calls `app.clipboard().read_text()`, it contends with other operations
+for this shared resource.
+
+On macOS specifically:
+- NSPasteboard (the system clipboard API) is NOT thread-safe
+- It should ideally be accessed from the main thread
+- The shared mutex in the Tauri plugin doesn't properly handle this
+
+The **original working code** (before cf381ed) used `arboard::Clipboard::new()` to
+create a **dedicated Clipboard instance per thread**, which is the correct pattern.
+
+## Things We Tried
+
+### Attempt 1: Main Thread Dispatch (Did NOT work)
+- Added `read_clipboard_safe()` function that uses `app.run_on_main_thread()` on macOS
+- Used std::sync::mpsc channels to get the result back to the monitor thread
+- Also dispatched `set_clipboard` writes to the main thread on macOS
+- Result: Still didn't fix the issue
+
+### Attempt 2: Revert to arboard directly (Current approach)
+- Changed `start_monitor()` to create its own `arboard::Clipboard` instance
+- Changed `set_clipboard()` to spawn a thread with its own `arboard::Clipboard` instance
+- This matches the original working pattern from before cf381ed
+- Added `arboard = "3"` to Cargo.toml
+
+### Additional Fix: Graceful Shutdown
+- Added `shutdown: Arc<AtomicBool>` to AppState
+- Monitor thread checks `is_shutdown()` each iteration
+- On app exit, `request_shutdown()` is called before cleanup
+- This fixes a Linux panic: "called `Option::unwrap()` on a `None` value"
+  that occurred when closing the app
+
+## Files Changed
+
+1. **src-tauri/src/clipboard.rs**
+   - Reverted to using `arboard::Clipboard` directly
+   - Each thread creates its own Clipboard instance
+   - Added shutdown flag check in monitor loop
+
+2. **src-tauri/src/state.rs**
+   - Added `shutdown: Arc<AtomicBool>` field
+   - Added `request_shutdown()` and `is_shutdown()` methods
+
+3. **src-tauri/src/lib.rs**
+   - Modified exit handler to call `request_shutdown()` before cleanup
+
+4. **src-tauri/Cargo.toml**
+   - Added `arboard = "3"` dependency
+
+## How to Test on macOS
+
+1. Build and run:
+   ```
+   npm run tauri dev
+   ```
+
+2. Have another device (Linux or another Mac) running ClusterCut in the same cluster
+
+3. Test the fix:
+   - Open TextEdit (or any app)
+   - Copy some text (Cmd+C)
+   - Verify the text was sent to the other device (check notifications or other device)
+   - Immediately try to paste (Cmd+V) - this should work now
+   - Right-click and check that "Paste" menu item is enabled
+
+4. Test graceful shutdown:
+   - Copy some text to trigger clipboard activity
+   - Close the app (Cmd+Q)
+   - Check terminal for any panic messages (there should be none)
+
+## Previous Attempts (from git history)
+
+Looking at commits after the rename:
+- d742136: Debounce timer reset when heartbeat received
+- cf381ed: Switched to Tauri clipboard plugin (THIS BROKE IT)
+- 754acab: more logging for debugging
+- 9e5c98f: Removing pending UCP strings
+- 15f8c09: Specified permissions for copy paste
+- d25f7b8: Paste verification
+- 67320ac: Removed arboard
+- e869768: switched to pbcopy on macos
+- cd778a3: macOS Sandboxing was created by a sadist
+- 490908d: Reverted to arboard
+- 7fee327: Gemini is dumb
+- 9a1734d: Trying Claude to fix this issue
+
+## Key Insight
+
+The fundamental issue is that the Tauri clipboard plugin's shared-instance design
+doesn't work well with macOS's NSPasteboard threading requirements. Using arboard
+directly with per-thread instances is the correct approach.
