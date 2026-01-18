@@ -76,14 +76,6 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     }
                 } else if text != last_text && !text.is_empty() {
                     tracing::debug!("Clipboard Changed detected (len={})", text.len());
-
-                    // DEBUG: Check clipboard immediately after detection
-                    if let Some(check) = read_clipboard_native() {
-                        tracing::info!("[MONITOR DEBUG] Right after detection, clipboard has {} chars", check.len());
-                    } else {
-                        tracing::warn!("[MONITOR DEBUG] Right after detection, clipboard is EMPTY!");
-                    }
-
                     last_text = text.clone();
 
                     // Update global deduplication cache to prevent echo loops
@@ -108,22 +100,8 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                         sender: hostname,
                     };
 
-                    // DEBUG: Check before emit
-                    if let Some(check) = read_clipboard_native() {
-                        tracing::info!("[MONITOR DEBUG] Before emit, clipboard has {} chars", check.len());
-                    } else {
-                        tracing::warn!("[MONITOR DEBUG] Before emit, clipboard is EMPTY!");
-                    }
-
                     // Emit to frontend (local notification)
                     let _ = app_handle.emit("clipboard-change", &payload_obj);
-
-                    // DEBUG: Check after emit
-                    if let Some(check) = read_clipboard_native() {
-                        tracing::info!("[MONITOR DEBUG] After emit, clipboard has {} chars", check.len());
-                    } else {
-                        tracing::warn!("[MONITOR DEBUG] After emit, clipboard is EMPTY!");
-                    }
 
                     // Check Auto-Send Setting
                     let auto_send = { state.settings.lock().unwrap().auto_send };
@@ -213,23 +191,19 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
 }
 
 pub fn set_clipboard(_app: &AppHandle, text: String) {
-    let text_len = text.len();
-    tracing::info!("[set_clipboard] CALLED with {} chars", text_len);
     let text_clone = text.clone();
 
     // Spawn a thread to set clipboard to avoid blocking the caller
-    // Each write operation gets its own Clipboard instance (like the original working code)
+    // Each write operation gets its own Clipboard instance
     thread::spawn(move || {
-        tracing::info!("[set_clipboard] Thread started for {} chars", text_len);
         match Clipboard::new() {
             Ok(mut clipboard) => {
                 // First check if clipboard already has this content to avoid unnecessary writes
                 if let Ok(current) = clipboard.get_text() {
                     if current == text {
-                        tracing::debug!("[set_clipboard] Clipboard already contains this text, skipping write");
+                        tracing::debug!("Clipboard already contains this text, skipping write");
                         return;
                     }
-                    tracing::info!("[set_clipboard] Current clipboard has {} chars, will overwrite with {} chars", current.len(), text.len());
                 }
 
                 // Mark this content as "to be ignored" by the monitor
@@ -239,12 +213,12 @@ pub fn set_clipboard(_app: &AppHandle, text: String) {
                 }
 
                 if let Err(e) = clipboard.set_text(&text) {
-                    tracing::error!("[set_clipboard] Failed to set clipboard: {}", e);
+                    tracing::error!("Failed to set clipboard: {}", e);
                 } else {
-                    tracing::info!("[set_clipboard] Successfully set clipboard to {} chars", text.len());
+                    tracing::debug!("Successfully set local clipboard content.");
                 }
             }
-            Err(e) => tracing::error!("[set_clipboard] Failed to init clipboard for write: {}", e),
+            Err(e) => tracing::error!("Failed to init clipboard for write: {}", e),
         }
     });
 }
