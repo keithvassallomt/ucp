@@ -711,7 +711,11 @@ async fn send_clipboard(
                          let transport_clone = (*transport).clone();
                          let data_vec = data.clone();
                          tauri::async_runtime::spawn(async move {
-                             let _ = transport_clone.send_message(addr, &data_vec).await;
+                             if let Err(e) = transport_clone.send_message(addr, &data_vec).await {
+                                 tracing::error!("[Clipboard] Failed to send to {}: {}", addr, e);
+                             } else {
+                                 tracing::debug!("[Clipboard] Sent to {}", addr);
+                             }
                          });
                      }
                      
