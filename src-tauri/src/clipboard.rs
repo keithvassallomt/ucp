@@ -2,9 +2,9 @@ use crate::crypto;
 use crate::protocol::Message;
 use crate::state::AppState;
 use crate::transport::Transport;
-use arboard::Clipboard;
 use std::{thread, time::Duration};
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 // Use a shared cache to avoid feedback loops
 use once_cell::sync::Lazy;
@@ -12,33 +12,21 @@ use std::sync::{Arc, Mutex};
 
 static IGNORED_TEXT: Lazy<Arc<Mutex<Option<String>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
-/// Read clipboard using pbpaste on macOS (avoids arboard issues with Tauri)
-#[cfg(target_os = "macos")]
-fn read_clipboard_native() -> Option<String> {
-    use std::process::Command;
-    match Command::new("pbpaste").output() {
-        Ok(output) => {
-            if output.status.success() {
-                String::from_utf8(output.stdout).ok()
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    }
+/// Read clipboard text using the Tauri clipboard plugin
+fn read_clipboard(app: &AppHandle) -> Option<String> {
+    app.clipboard().read_text().ok()
 }
 
-#[cfg(not(target_os = "macos"))]
-fn read_clipboard_native() -> Option<String> {
-    // On non-macOS, fall back to arboard
-    Clipboard::new().ok().and_then(|mut c| c.get_text().ok())
+/// Write clipboard text using the Tauri clipboard plugin
+fn write_clipboard(app: &AppHandle, text: &str) -> Result<(), String> {
+    app.clipboard()
+        .write_text(text)
+        .map_err(|e| e.to_string())
 }
 
 pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transport) {
     thread::spawn(move || {
-        // On macOS, we use pbpaste to read clipboard to avoid arboard/Tauri interference
-        // On other platforms, we use arboard directly
-        let mut last_text = read_clipboard_native().unwrap_or_default();
+        let mut last_text = read_clipboard(&app_handle).unwrap_or_default();
 
         // Polling loop
         loop {
@@ -48,18 +36,12 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                 break;
             }
 
-            // Read clipboard using native method (pbpaste on macOS)
-            if let Some(text) = read_clipboard_native() {
+            if let Some(text) = read_clipboard(&app_handle) {
                 // Check if this text should be ignored (because we just set it)
                 let should_ignore = {
                     let ignored = IGNORED_TEXT.lock().unwrap();
                     if let Some(ref ign) = *ignored {
-                        if ign == &text {
-                            // Match found, clear ignored and skip processing
-                            true
-                        } else {
-                            false
-                        }
+                        ign == &text
                     } else {
                         false
                     }
@@ -67,7 +49,6 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
 
                 if should_ignore {
                     // Start tracking this as the new "baseline" so we don't trigger on it later
-                    // But don't broadcast it.
                     last_text = text;
                     // Clear the ignored text now that we've seen it
                     {
@@ -85,7 +66,6 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     }
 
                     // Construct Payload Object
-                    // let local_id = { state.local_device_id.lock().unwrap().clone() };
                     let hostname = crate::get_hostname_internal();
                     let msg_id = uuid::Uuid::new_v4().to_string();
                     let ts = std::time::SystemTime::now()
@@ -107,7 +87,6 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     let auto_send = { state.settings.lock().unwrap().auto_send };
                     if !auto_send {
                         tracing::debug!("Auto-send disabled. Skipping broadcast.");
-                        // We continue the loop, sleeping at the end
                     } else {
                         // Encrypt Payload using Cluster Key
                         let payload: Option<Vec<u8>> = {
@@ -116,10 +95,8 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                                 let mut key_arr = [0u8; 32];
                                 if key.len() == 32 {
                                     key_arr.copy_from_slice(key);
-                                    // Serialize Payload
                                     let json_payload =
                                         serde_json::to_vec(&payload_obj).unwrap_or_default();
-                                    // Encrypt
                                     match crypto::encrypt(&key_arr, &json_payload) {
                                         Ok(cipher) => Some(cipher),
                                         Err(e) => {
@@ -131,14 +108,11 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                                     None
                                 }
                             } else {
-                                // No key set, cannot broadcast securely
-                                // println!("Skipping broadcast: No Cluster Key");
                                 None
                             }
                         };
 
                         if let Some(encrypted_data) = payload {
-                            // Broadcast to peers
                             let peers = state.get_peers();
 
                             if !peers.is_empty() {
@@ -152,24 +126,16 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                                     );
                                 }
                             }
-                            // Wrap in protocol message
+
                             let msg = Message::Clipboard(encrypted_data);
                             let data = serde_json::to_vec(&msg).unwrap_or_default();
 
-                            // Only send to Trusted Peers? Or Known Peers?
-                            // If we used the cluster key, only those who have it can read it.
-                            // So we can send to all known peers.
                             for peer in peers.values() {
-                                // Only send to trusted peers? Or all known?
-                                // If they are in `peers` map (from Discovery), we can try.
-                                // Ideally we only send to `is_trusted` if we want to save bandwidth,
-                                // but for now let's send to all found peers.
                                 let target = peer.ip;
                                 let port = peer.port;
                                 let transport_clone = transport.clone();
                                 let data_vec = data.to_vec();
 
-                                // Spawn send so we don't block polling
                                 tauri::async_runtime::spawn(async move {
                                     let addr = std::net::SocketAddr::new(target, port);
                                     if let Err(e) =
@@ -190,35 +156,29 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
     });
 }
 
-pub fn set_clipboard(_app: &AppHandle, text: String) {
+pub fn set_clipboard(app: &AppHandle, text: String) {
+    let app_handle = app.clone();
     let text_clone = text.clone();
 
-    // Spawn a thread to set clipboard to avoid blocking the caller
-    // Each write operation gets its own Clipboard instance
     thread::spawn(move || {
-        match Clipboard::new() {
-            Ok(mut clipboard) => {
-                // First check if clipboard already has this content to avoid unnecessary writes
-                if let Ok(current) = clipboard.get_text() {
-                    if current == text {
-                        tracing::debug!("Clipboard already contains this text, skipping write");
-                        return;
-                    }
-                }
-
-                // Mark this content as "to be ignored" by the monitor
-                {
-                    let mut ignored = IGNORED_TEXT.lock().unwrap();
-                    *ignored = Some(text_clone);
-                }
-
-                if let Err(e) = clipboard.set_text(&text) {
-                    tracing::error!("Failed to set clipboard: {}", e);
-                } else {
-                    tracing::debug!("Successfully set local clipboard content.");
-                }
+        // First check if clipboard already has this content to avoid unnecessary writes
+        if let Some(current) = read_clipboard(&app_handle) {
+            if current == text {
+                tracing::debug!("Clipboard already contains this text, skipping write");
+                return;
             }
-            Err(e) => tracing::error!("Failed to init clipboard for write: {}", e),
+        }
+
+        // Mark this content as "to be ignored" by the monitor
+        {
+            let mut ignored = IGNORED_TEXT.lock().unwrap();
+            *ignored = Some(text_clone);
+        }
+
+        if let Err(e) = write_clipboard(&app_handle, &text) {
+            tracing::error!("Failed to set clipboard: {}", e);
+        } else {
+            tracing::debug!("Successfully set local clipboard content.");
         }
     });
 }

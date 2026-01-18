@@ -45,5 +45,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 clap = { version = "4.5", features = ["derive"] }
 uuid = { version = "1.19.0", features = ["v4", "fast-rng", "serde"] }
-arboard = "3"
+tauri-plugin-clipboard-manager = "2"
 
