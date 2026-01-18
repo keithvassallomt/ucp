@@ -178,9 +178,41 @@ pub fn set_clipboard(app: &AppHandle, text: String) {
 
     // Use Tauri Clipboard Plugin (Main Thread Safe)
     use tauri_plugin_clipboard_manager::ClipboardExt;
-    if let Err(e) = app.clipboard().write_text(text) {
+    if let Err(e) = app.clipboard().write_text(text.clone()) {
         tracing::error!("Failed to set clipboard via Tauri Plugin: {}", e);
     } else {
         tracing::debug!("Successfully set local clipboard content via Tauri Plugin.");
+
+        // VERIFICATION: Read back to ensure it stuck
+        thread::sleep(Duration::from_millis(100));
+        match app.clipboard().read_text() {
+            Ok(read_val) => {
+                if read_val == text {
+                    tracing::debug!("VERIFICATION: Clipboard write confirmed.");
+                } else {
+                    tracing::warn!(
+                        "VERIFICATION FAILED: Expected '{}', got '{}'",
+                        text,
+                        read_val
+                    );
+                    // Fallback: Try pbcopy (macOS specific hack for debugging)
+                    #[cfg(target_os = "macos")]
+                    {
+                        tracing::warn!("Attempting fallback to pbcopy...");
+                        use std::io::Write;
+                        use std::process::{Command, Stdio};
+                        if let Ok(mut child) = Command::new("pbcopy").stdin(Stdio::piped()).spawn()
+                        {
+                            if let Some(mut stdin) = child.stdin.take() {
+                                let _ = stdin.write_all(text.as_bytes());
+                            }
+                            let _ = child.wait();
+                            tracing::info!("Fallback pbcopy executed.");
+                        }
+                    }
+                }
+            }
+            Err(e) => tracing::error!("VERIFICATION ERROR: Could not read clipboard: {}", e),
+        }
     }
 }
