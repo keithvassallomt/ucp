@@ -50,7 +50,7 @@ fn init_logging() {
     // Let's us `directories` crate? Or just `.logs` in CWD for development as requested?
     // "We need each log line to be timestamped, and include hostname."
     
-    let file_appender = tracing_appender::rolling::daily("logs", "ucp.log");
+    let file_appender = tracing_appender::rolling::daily("logs", "clustercut.log");
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(file_appender)
         .with_ansi(false)
@@ -587,7 +587,7 @@ async fn start_pairing(
 
     // 2. Start SPAKE2
     let (spake_state, msg) =
-        crypto::start_spake2(&pin, "ucp-connect", "ucp-connect").map_err(|e| e.to_string())?;
+        crypto::start_spake2(&pin, "clustercut-connect", "clustercut-connect").map_err(|e| e.to_string())?;
 
     // 3. Store state
     {

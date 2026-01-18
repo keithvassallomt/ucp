@@ -577,7 +577,7 @@ export default function App() {
               <Wifi className="h-5 w-5 text-white" />
             </div>
             <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                UCP
+                ClusterCut
             </h1>
           </div>
 
@@ -743,7 +743,7 @@ export default function App() {
                  onKeyDown={(e) => e.key === "Enter" && submitManualPeer()}
                />
                <div className="mt-2 text-xs text-zinc-500">
-                  Target must be running UCP on the default port (4654).
+                  Target must be running ClusterCut on the default port (4654).
                </div>
              </div>
           </div>
@@ -882,7 +882,7 @@ function DevicesView({
              <SectionHeader
                 icon={<Unlock className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
                 title="Nearby Clusters"
-                subtitle="Other UCP clusters."
+                subtitle="Discovered clusters."
                 right={
                   <Button size="sm" iconLeft={<PlusCircle className="h-4 w-4" />} onClick={onAddManual}>
                     Add Remote

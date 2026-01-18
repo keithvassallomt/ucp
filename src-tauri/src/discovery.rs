@@ -2,7 +2,7 @@ use local_ip_address::local_ip;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::error::Error;
 
-pub const SERVICE_TYPE: &str = "_ucp._tcp.local.";
+pub const SERVICE_TYPE: &str = "_clustercut._tcp.local.";
 
 pub struct Discovery {
     daemon: ServiceDaemon,

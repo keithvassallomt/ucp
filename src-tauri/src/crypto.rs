@@ -14,7 +14,7 @@ pub fn start_spake2(
 ) -> Result<(SpakeState, Vec<u8>), Box<dyn Error>> {
     let (spake, msg) = Spake2::<Ed25519Group>::start_symmetric(
         &Password::new(password.as_bytes()),
-        &Identity::new(b"ucp-connect"),
+        &Identity::new(b"clustercut-connect"),
     );
 
     Ok((SpakeState { spake }, msg))
