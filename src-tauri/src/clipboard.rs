@@ -15,23 +15,15 @@ static IGNORED_TEXT: Lazy<Arc<Mutex<Option<String>>>> = Lazy::new(|| Arc::new(Mu
 
 pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transport) {
     thread::spawn(move || {
-        let mut clipboard = match arboard::Clipboard::new() {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("Failed to initialize arboard for monitoring: {}", e);
-                return;
-            }
-        };
-
-        let mut last_text = match clipboard.get_text() {
+        let mut last_text = match app_handle.clipboard().read_text() {
             Ok(t) => t,
             _ => String::new(),
         };
 
         // Polling loop
         loop {
-            // Use arboard for reading (Background Thread Efficient)
-            if let Ok(text) = clipboard.get_text() {
+            // Use Tauri Plugin for reading (Main Thread Safe via Dispatch)
+            if let Ok(text) = app_handle.clipboard().read_text() {
                 // Check if this text should be ignored (because we just set it)
                 let should_ignore = {
                     let ignored = IGNORED_TEXT.lock().unwrap();
