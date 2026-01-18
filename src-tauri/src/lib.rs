@@ -1616,8 +1616,17 @@ pub fn run() {
         .run(|app_handle: &tauri::AppHandle, event: tauri::RunEvent| {
         match event {
             tauri::RunEvent::Exit => {
-                tracing::info!("App exiting, dropping discovery service...");
+                tracing::info!("App exiting, signaling shutdown to background threads...");
                 let state = app_handle.state::<AppState>();
+
+                // Signal shutdown to background threads FIRST
+                // This allows the clipboard monitor to exit gracefully before cleanup
+                state.request_shutdown();
+
+                // Give threads a moment to notice the shutdown signal
+                std::thread::sleep(std::time::Duration::from_millis(100));
+
+                tracing::info!("Dropping discovery service...");
                 let mut discovery = state.discovery.lock().unwrap();
                 *discovery = None; // Explicitly drop to trigger unregister
             }

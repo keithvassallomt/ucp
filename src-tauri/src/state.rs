@@ -1,6 +1,7 @@
 use crate::peer::Peer;
 use crate::storage::AppSettings;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 // use crate::crypto::SpakeState; // We'll just use explicit path or generic if needed, but explicit path is best.
 // actually, let's use Any or just simple wrapper if circular dep is issue.
@@ -31,6 +32,8 @@ pub struct AppState {
     pub settings: Arc<Mutex<AppSettings>>,
     // Pending Removals (Debounce for mDNS)
     pub pending_removals: Arc<Mutex<HashMap<String, u64>>>,
+    // Shutdown flag for graceful termination of background threads
+    pub shutdown: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -48,7 +51,16 @@ impl AppState {
             network_pin: Arc::new(Mutex::new(String::new())),
             settings: Arc::new(Mutex::new(AppSettings::default())),
             pending_removals: Arc::new(Mutex::new(HashMap::new())),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    pub fn request_shutdown(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_shutdown(&self) -> bool {
+        self.shutdown.load(Ordering::SeqCst)
     }
 
     pub fn add_peer(&self, peer: Peer) {
