@@ -773,7 +773,8 @@ pub fn run() {
     
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
+        // Removed tauri_plugin_clipboard_manager - using arboard directly instead
+        // .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .manage(AppState::new())
         .setup(|app| {
@@ -1025,11 +1026,14 @@ pub fn run() {
                 let transport_inside = transport_inside.clone();
 
                 tauri::async_runtime::spawn(async move {
+                    tracing::info!("[INCOMING] Raw message from {} ({} bytes)", addr, data.len());
                     match serde_json::from_slice::<Message>(&data) {
-                        Ok(msg) => match msg {
+                        Ok(msg) => {
+                            tracing::info!("[INCOMING] Parsed message type: {:?}", std::mem::discriminant(&msg));
+                            match msg {
                             Message::Clipboard(ciphertext) => {
                                 // Decrypt
-                                tracing::debug!("Received Encrypted Clipboard from {}", addr);
+                                tracing::info!("[INCOMING] Clipboard message from {} ({} bytes ciphertext)", addr, ciphertext.len());
                                 let key_opt = {
                                     listener_state.cluster_key.lock().unwrap().clone()
                                 };
@@ -1471,7 +1475,7 @@ pub fn run() {
                                     let _ = listener_handle.emit("peer-remove", &target_id);
                                 }
                             }
-                        }
+                        }}
                         Err(e) => tracing::error!("Failed to parse message: {}", e),
                     }
                 });

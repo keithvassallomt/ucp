@@ -12,20 +12,33 @@ use std::sync::{Arc, Mutex};
 
 static IGNORED_TEXT: Lazy<Arc<Mutex<Option<String>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
+/// Read clipboard using pbpaste on macOS (avoids arboard issues with Tauri)
+#[cfg(target_os = "macos")]
+fn read_clipboard_native() -> Option<String> {
+    use std::process::Command;
+    match Command::new("pbpaste").output() {
+        Ok(output) => {
+            if output.status.success() {
+                String::from_utf8(output.stdout).ok()
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_clipboard_native() -> Option<String> {
+    // On non-macOS, fall back to arboard
+    Clipboard::new().ok().and_then(|mut c| c.get_text().ok())
+}
+
 pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transport) {
     thread::spawn(move || {
-        // Create a dedicated Clipboard instance for this thread
-        // This is the key fix: each thread needs its own arboard::Clipboard instance
-        // The Tauri plugin shares one instance which causes issues on macOS
-        let mut clipboard = match Clipboard::new() {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("Failed to initialize clipboard for monitor: {}", e);
-                return;
-            }
-        };
-
-        let mut last_text = clipboard.get_text().unwrap_or_default();
+        // On macOS, we use pbpaste to read clipboard to avoid arboard/Tauri interference
+        // On other platforms, we use arboard directly
+        let mut last_text = read_clipboard_native().unwrap_or_default();
 
         // Polling loop
         loop {
@@ -35,8 +48,8 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                 break;
             }
 
-            // Read clipboard using our dedicated instance
-            if let Ok(text) = clipboard.get_text() {
+            // Read clipboard using native method (pbpaste on macOS)
+            if let Some(text) = read_clipboard_native() {
                 // Check if this text should be ignored (because we just set it)
                 let should_ignore = {
                     let ignored = IGNORED_TEXT.lock().unwrap();
@@ -63,6 +76,14 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     }
                 } else if text != last_text && !text.is_empty() {
                     tracing::debug!("Clipboard Changed detected (len={})", text.len());
+
+                    // DEBUG: Check clipboard immediately after detection
+                    if let Some(check) = read_clipboard_native() {
+                        tracing::info!("[MONITOR DEBUG] Right after detection, clipboard has {} chars", check.len());
+                    } else {
+                        tracing::warn!("[MONITOR DEBUG] Right after detection, clipboard is EMPTY!");
+                    }
+
                     last_text = text.clone();
 
                     // Update global deduplication cache to prevent echo loops
@@ -87,8 +108,22 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                         sender: hostname,
                     };
 
+                    // DEBUG: Check before emit
+                    if let Some(check) = read_clipboard_native() {
+                        tracing::info!("[MONITOR DEBUG] Before emit, clipboard has {} chars", check.len());
+                    } else {
+                        tracing::warn!("[MONITOR DEBUG] Before emit, clipboard is EMPTY!");
+                    }
+
                     // Emit to frontend (local notification)
                     let _ = app_handle.emit("clipboard-change", &payload_obj);
+
+                    // DEBUG: Check after emit
+                    if let Some(check) = read_clipboard_native() {
+                        tracing::info!("[MONITOR DEBUG] After emit, clipboard has {} chars", check.len());
+                    } else {
+                        tracing::warn!("[MONITOR DEBUG] After emit, clipboard is EMPTY!");
+                    }
 
                     // Check Auto-Send Setting
                     let auto_send = { state.settings.lock().unwrap().auto_send };
@@ -178,19 +213,23 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
 }
 
 pub fn set_clipboard(_app: &AppHandle, text: String) {
+    let text_len = text.len();
+    tracing::info!("[set_clipboard] CALLED with {} chars", text_len);
     let text_clone = text.clone();
 
     // Spawn a thread to set clipboard to avoid blocking the caller
     // Each write operation gets its own Clipboard instance (like the original working code)
     thread::spawn(move || {
+        tracing::info!("[set_clipboard] Thread started for {} chars", text_len);
         match Clipboard::new() {
             Ok(mut clipboard) => {
                 // First check if clipboard already has this content to avoid unnecessary writes
                 if let Ok(current) = clipboard.get_text() {
                     if current == text {
-                        tracing::debug!("Clipboard already contains this text, skipping write");
+                        tracing::debug!("[set_clipboard] Clipboard already contains this text, skipping write");
                         return;
                     }
+                    tracing::info!("[set_clipboard] Current clipboard has {} chars, will overwrite with {} chars", current.len(), text.len());
                 }
 
                 // Mark this content as "to be ignored" by the monitor
@@ -200,12 +239,12 @@ pub fn set_clipboard(_app: &AppHandle, text: String) {
                 }
 
                 if let Err(e) = clipboard.set_text(&text) {
-                    tracing::error!("Failed to set clipboard: {}", e);
+                    tracing::error!("[set_clipboard] Failed to set clipboard: {}", e);
                 } else {
-                    tracing::debug!("Successfully set local clipboard content.");
+                    tracing::info!("[set_clipboard] Successfully set clipboard to {} chars", text.len());
                 }
             }
-            Err(e) => tracing::error!("Failed to init clipboard for write: {}", e),
+            Err(e) => tracing::error!("[set_clipboard] Failed to init clipboard for write: {}", e),
         }
     });
 }
