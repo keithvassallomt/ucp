@@ -63,7 +63,7 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                     }
 
                     // Construct Payload Object
-                    let local_id = { state.local_device_id.lock().unwrap().clone() };
+                    // let local_id = { state.local_device_id.lock().unwrap().clone() };
                     let hostname = crate::get_hostname_internal();
                     let msg_id = uuid::Uuid::new_v4().to_string();
                     let ts = std::time::SystemTime::now()
@@ -167,25 +167,20 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
     });
 }
 
-pub fn set_clipboard(text: String) {
+pub fn set_clipboard(app: &AppHandle, text: String) {
     let text_clone = text.clone();
-    // Spawn a thread to set clipboard to avoid blocking network loop
-    thread::spawn(move || {
-        match Clipboard::new() {
-            Ok(mut c) => {
-                // Mark this content as "to be ignored" by the monitor
-                {
-                    let mut ignored = IGNORED_TEXT.lock().unwrap();
-                    *ignored = Some(text_clone);
-                }
 
-                if let Err(e) = c.set_text(text) {
-                    tracing::error!("Failed to set clipboard: {}", e);
-                } else {
-                    tracing::debug!("Successfully set local clipboard content.");
-                }
-            }
-            Err(e) => tracing::error!("Failed to init clipboard for write: {}", e),
-        }
-    });
+    // Mark this content as "to be ignored" by the monitor
+    {
+        let mut ignored = IGNORED_TEXT.lock().unwrap();
+        *ignored = Some(text_clone);
+    }
+
+    // Use Tauri Clipboard Plugin (Main Thread Safe)
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    if let Err(e) = app.clipboard().write_text(text) {
+        tracing::error!("Failed to set clipboard via Tauri Plugin: {}", e);
+    } else {
+        tracing::debug!("Successfully set local clipboard content via Tauri Plugin.");
+    }
 }

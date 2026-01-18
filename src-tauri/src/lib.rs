@@ -674,10 +674,10 @@ async fn send_clipboard(
 ) -> Result<(), String> {
     
     // Manual Send Command
-    clipboard::set_clipboard(text.clone()); // Update local clipboard too? Yes, usually.
+    clipboard::set_clipboard(&app_handle, text.clone()); // Update local clipboard too? Yes, usually.
     
     // Construct Payload
-    let local_id = state.local_device_id.lock().unwrap().clone();
+    // let local_id = state.local_device_id.lock().unwrap().clone();
     let hostname = get_hostname_internal();
     let msg_id = uuid::Uuid::new_v4().to_string();
     let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
@@ -759,8 +759,8 @@ async fn delete_history_item(
 }
 
 #[tauri::command]
-async fn set_local_clipboard(text: String) -> Result<(), String> {
-    clipboard::set_clipboard(text);
+async fn set_local_clipboard(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    clipboard::set_clipboard(&app, text);
     Ok(())
 }
 
@@ -773,6 +773,7 @@ pub fn run() {
     
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
         .manage(AppState::new())
         .setup(|app| {
@@ -1068,7 +1069,7 @@ pub fn run() {
                                                 // Set Clipboard (Dedupe check is inside set_clipboard)
                                                 let auto_receiver = { listener_state.settings.lock().unwrap().auto_receive };
                                                 if auto_receiver {
-                                                    clipboard::set_clipboard(text.clone());
+                                                    clipboard::set_clipboard(&listener_handle, text.clone());
                                                 } else {
                                                     let auto_send = { listener_state.settings.lock().unwrap().auto_send };
                                                     if !auto_send {
