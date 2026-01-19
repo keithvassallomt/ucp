@@ -112,6 +112,7 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
     {
         tracing::debug!("[Notification] Linux detected. Attempting notify-send workaround...");
         match std::process::Command::new("notify-send")
+            .arg("--hint=int:transient:1")
             .arg(title)
             .arg(body)
             .spawn() 
