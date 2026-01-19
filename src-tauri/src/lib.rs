@@ -9,6 +9,10 @@ mod transport;
 
 use clap::Parser;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState, ShortcutEvent};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use std::str::FromStr;
+
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -81,7 +85,7 @@ fn get_hostname_internal() -> String {
 }
 use discovery::Discovery;
 use peer::Peer;
-use protocol::Message;
+use protocol::{Message, ClipboardPayload};
 use rand::Rng;
 use state::AppState;
 use storage::{
@@ -211,6 +215,9 @@ fn save_settings(
 ) {
     *state.settings.lock().unwrap() = settings.clone();
     crate::storage::save_settings(&app_handle, &settings);
+    
+    // Update Shortcuts
+    register_shortcuts(&app_handle);
     // If auto_receive is now OFF, we might want to do something?
     // If device name changed, we should probably rebroadcast or something, 
     // but the next heartbeat or discovery probe will pick it up.
@@ -799,6 +806,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(handle_shortcut).build())
         .manage(AppState::new())
         .setup(|app| {
             // Initialize QUIC Transport (Fixed Port 4654 for Discovery, or random fallback)
@@ -837,8 +845,14 @@ pub fn run() {
                 let mut kp_lock = state.known_peers.lock().unwrap();
                 *kp_lock = load_known_peers(app_handle);
                 
-                // Load known peers into RUNTIME state too! (Fixes UI not showing known peers on restart)
-                // 3. Load Device ID
+                
+                // 4. Load Settings
+                let mut settings_lock = state.settings.lock().unwrap();
+                *settings_lock = load_settings(app_handle);
+                drop(settings_lock); // Unlock to allow registration to access it if needed (though register_shortcuts locks it again)
+                
+                // Register Shortcuts on Startup
+                register_shortcuts(app_handle);
                 let mut device_id = load_device_id(app_handle);
                 if device_id.is_empty() {
                     let run_id: u32 = rand::thread_rng().gen();
@@ -1695,4 +1709,140 @@ pub fn run() {
             _ => {}
         }
     });
+}
+
+fn register_shortcuts(app_handle: &tauri::AppHandle) {
+    let state = app_handle.state::<AppState>();
+    let settings = state.settings.lock().unwrap().clone();
+    
+    // Unregister all first to clear old ones
+    if let Err(e) = app_handle.global_shortcut().unregister_all() {
+        tracing::warn!("Failed to unregister shortcuts: {}", e);
+    }
+    
+    // Register Send Shortcut
+    if !settings.auto_send {
+        if let Some(s) = &settings.shortcut_send {
+            match Shortcut::from_str(s) {
+                Ok(shortcut) => {
+                    if let Err(e) = app_handle.global_shortcut().register(shortcut) {
+                        tracing::error!("Failed to register Send shortcut '{}': {}", s, e);
+                    } else {
+                        tracing::debug!("Registered Send shortcut: {}", s);
+                    }
+                }
+                Err(e) => tracing::error!("Invalid Send shortcut '{}': {}", s, e),
+            }
+        }
+    }
+    
+    // Register Receive Shortcut
+    if !settings.auto_receive {
+        if let Some(s) = &settings.shortcut_receive {
+            match Shortcut::from_str(s) {
+                Ok(shortcut) => {
+                    if let Err(e) = app_handle.global_shortcut().register(shortcut) {
+                        tracing::error!("Failed to register Receive shortcut '{}': {}", s, e);
+                    } else {
+                        tracing::debug!("Registered Receive shortcut: {}", s);
+                    }
+                }
+                Err(e) => tracing::error!("Invalid Receive shortcut '{}': {}", s, e),
+            }
+        }
+    }
+}
+
+fn handle_shortcut(app_handle: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
+    if event.state == ShortcutState::Released {
+        return;
+    }
+    let state = app_handle.state::<AppState>();
+    let settings = state.settings.lock().unwrap().clone();
+    
+    // Check Send
+    if let Some(s) = &settings.shortcut_send {
+        if let Ok(parsed) = Shortcut::from_str(s) {
+           if parsed == *shortcut {
+               tracing::info!("Global Send Shortcut Triggered!");
+               // Trigger Send Logic
+               // Get local content
+               match app_handle.clipboard().read_text() {
+                   Ok(text) => {
+                        let hostname = hostname::get().map(|h| h.to_string_lossy().to_string()).unwrap_or("Unknown".to_string());
+                        let msg_id = uuid::Uuid::new_v4().to_string();
+                        let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+
+                        let payload_obj = crate::protocol::ClipboardPayload {
+                            id: msg_id.clone(),
+                            text: text.clone(),
+                            timestamp: ts,
+                            sender: hostname,
+                        };
+                        
+                        // Emit local event
+                        let _ = app_handle.emit("clipboard-change", &payload_obj);
+
+                        // Encrypt & Send
+                        let ck_lock = state.cluster_key.lock().unwrap();
+                        if let Some(key) = ck_lock.as_ref() {
+                            if key.len() == 32 {
+                                let mut key_arr = [0u8; 32];
+                                key_arr.copy_from_slice(key);
+                                if let Ok(json_payload) = serde_json::to_vec(&payload_obj) {
+                                    if let Ok(cipher) = crypto::encrypt(&key_arr, &json_payload) {
+                                        let msg = Message::Clipboard(cipher);
+                                        if let Ok(data) = serde_json::to_vec(&msg) {
+                                            let transport = app_handle.state::<Transport>();
+                                            let peers = state.get_peers();
+                                            for p in peers.values() {
+                                                let addr = std::net::SocketAddr::new(p.ip, p.port);
+                                                let transport_clone = (*transport).clone();
+                                                let data_vec = data.clone();
+                                                tauri::async_runtime::spawn(async move {
+                                                    let _ = transport_clone.send_message(addr, &data_vec).await;
+                                                });
+                                            }
+                                            
+                                            // Notification
+                                            let notif_settings = settings.notifications.clone();
+                                            if notif_settings.data_sent {
+                                                send_notification(app_handle, "Clipboard Sent", "Manual broadcast successful.");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                   },
+                   Err(e) => tracing::error!("Failed to read clipboard for global send: {}", e),
+               }
+               return;
+           }
+        }
+    }
+    
+    // Check Receive
+    if let Some(s) = &settings.shortcut_receive {
+        if let Ok(parsed) = Shortcut::from_str(s) {
+           if parsed == *shortcut {
+                tracing::info!("Global Receive Shortcut Triggered!");
+                // Manual Receive Logic
+                let mut guard = state.pending_clipboard.lock().unwrap();
+                if let Some(payload) = guard.take() { // take() removes it from pending
+                    // Apply to System Clipboard
+                    // Using clipboard plugin
+                    if let Err(e) = app_handle.clipboard().write_text(payload.text) {
+                        tracing::error!("Failed to write pending clipboard to system: {}", e);
+                    } else {
+                        tracing::info!("Confirmed pending clipboard content via shortcut.");
+                        send_notification(app_handle, "Clipboard Received", "Pending content applied.");
+                    }
+                } else {
+                    tracing::info!("No pending clipboard content to receive.");
+                     send_notification(app_handle, "Manual Receive", "No pending content.");
+                }
+           }
+        }
+    }
 }

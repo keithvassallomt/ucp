@@ -303,6 +303,8 @@ pub struct AppSettings {
     pub auto_send: bool,
     pub auto_receive: bool,
     pub notifications: NotificationSettings,
+    pub shortcut_send: Option<String>,
+    pub shortcut_receive: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -313,6 +315,8 @@ impl Default for AppSettings {
             auto_send: true,
             auto_receive: true,
             notifications: NotificationSettings::default(),
+            shortcut_send: Some("CommandOrControl+Alt+C".to_string()),
+            shortcut_receive: Some("CommandOrControl+Alt+V".to_string()),
         }
     }
 }

@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronRight, ArrowUp, ArrowDown, Send
 } from "lucide-react";
 import clsx from "clsx";
+import { ShortcutRecorder } from "./components/ShortcutRecorder";
 
 /* --- Types --- */
 
@@ -62,6 +63,8 @@ interface AppSettings {
   auto_send: boolean;
   auto_receive: boolean;
   notifications: NotificationSettings;
+  shortcut_send: string | null;
+  shortcut_receive: string | null;
 }
 
 /* --- Helper Components (from Design) --- */
@@ -1386,12 +1389,18 @@ function SettingsView({
              </div>
              
              {!settings.auto_send && (
-                 <div className="rounded-xl border border-dashed border-zinc-300 p-3 dark:border-zinc-700">
-                     <div className="flex items-center justify-between opacity-50 cursor-not-allowed">
+                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
+                     <div className="flex flex-col gap-2">
                          <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Global Shortcut (Send)</div>
-                         <div className="text-xs font-mono bg-zinc-100 px-2 py-1 rounded dark:bg-zinc-800">Ctrl+Alt+C</div>
+                         <ShortcutRecorder
+                            value={settings.shortcut_send}
+                            onChange={(val) => setSettings({ ...settings, shortcut_send: val })}
+                            placeholder="No shortcut set"
+                         />
+                         <div className="text-[10px] text-zinc-500">
+                             Keyboard shortcut to manually broadcast clipboard.
+                         </div>
                      </div>
-                     <div className="mt-1 text-[10px] text-zinc-400 text-center">Config coming later</div>
                  </div>
              )}
 
@@ -1409,6 +1418,22 @@ function SettingsView({
                     <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.auto_receive ? "translate-x-6" : "translate-x-1")} />
                 </button>
              </div>
+             
+             {!settings.auto_receive && (
+                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
+                     <div className="flex flex-col gap-2">
+                         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Global Shortcut (Receive)</div>
+                         <ShortcutRecorder
+                            value={settings.shortcut_receive}
+                            onChange={(val) => setSettings({ ...settings, shortcut_receive: val })}
+                            placeholder="No shortcut set"
+                         />
+                         <div className="text-[10px] text-zinc-500">
+                             Keyboard shortcut to apply pending clipboard data.
+                         </div>
+                     </div>
+                 </div>
+             )}
         </div>
       </Card>
       
