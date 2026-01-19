@@ -765,6 +765,29 @@ async fn set_local_clipboard(app: tauri::AppHandle, text: String) -> Result<(), 
     Ok(())
 }
 
+#[tauri::command]
+async fn confirm_pending_clipboard(
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let pending_opt = {
+        let mut lock = state.pending_clipboard.lock().unwrap();
+        lock.take() // Take it (clearing it)
+    };
+
+    if let Some(payload) = pending_opt {
+        tracing::info!("Confirming pending clipboard from {}", payload.sender);
+        clipboard::set_clipboard(&app_handle, payload.text.clone());
+        
+        // Emit change event so history updates
+        let _ = app_handle.emit("clipboard-change", &payload);
+        
+        Ok(())
+    } else {
+        Err("No pending clipboard content".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
@@ -1082,24 +1105,46 @@ pub fn run() {
                                                 
                                                 // Set Clipboard (Dedupe check is inside set_clipboard)
                                                 let auto_receiver = { listener_state.settings.lock().unwrap().auto_receive };
-                                                if auto_receiver {
-                                                    clipboard::set_clipboard(&listener_handle, text.clone());
-                                                } else {
-                                                    let auto_send = { listener_state.settings.lock().unwrap().auto_send };
-                                                    if !auto_send {
-                                                        tracing::debug!("Auto-send disabled. Skipping broadcast.");
-                                                        return; // Use return to exit the async block, not continue
-                                                    }
-                                                }
                                                 
-                                                // Emit enriched event
+                                                // Create Payload Object
                                                 let payload_obj = crate::protocol::ClipboardPayload {
-                                                    id,
+                                                    id: id.clone(),
                                                     text: text.clone(),
                                                     timestamp: ts,
-                                                    sender,
+                                                    sender: sender.clone(),
                                                 };
-                                                let _ = listener_handle.emit("clipboard-change", &payload_obj);
+
+                                                if auto_receiver {
+                                                    clipboard::set_clipboard(&listener_handle, text.clone());
+                                                    // Emit enriched event
+                                                    let _ = listener_handle.emit("clipboard-change", &payload_obj);
+                                                } else {
+                                                    // Manual Mode: Store Pending & Notify
+                                                    tracing::info!("[Clipboard] Auto-receive OFF. Storing pending clipboard from {}", sender);
+                                                    {
+                                                        let mut pending = listener_state.pending_clipboard.lock().unwrap();
+                                                        *pending = Some(payload_obj.clone());
+                                                    }
+                                                    let _ = listener_handle.emit("clipboard-pending", &payload_obj);
+                                                    
+                                                    // We still relay below if auto-send is ON? 
+                                                    // Wait, auto-send setting usually controls SENDING my own clipboard.
+                                                    // For relaying, we usually just relay everything we receive to ensure full coverage?
+                                                    // But the original code checked `auto_send` inside `if !auto_receiver` block?
+                                                    // "if !auto_send { return; }" -> This logic was weird. It meant "If I don't auto-receive, I ONLY relay if I auto-send".
+                                                    // Let's preserve the existing Relay logic decision for now or fix it?
+                                                    // The prompt doesn't ask to change Relay logic, but Manual Receive shouldn't block relaying if valid.
+                                                    // However, to minimize side effects, let's keep the flow similar but just split the action.
+                                                    
+                                                    let auto_send = { listener_state.settings.lock().unwrap().auto_send };
+                                                    // If we are Manual Receive, we might still want to relay? 
+                                                    // The original code returned early if !auto_send. 
+                                                    // That implies "If I am not participating (auto-receive off AND auto-send off), don't relay".
+                                                    if !auto_send {
+                                                         tracing::debug!("Auto-send disabled and Auto-receive disabled. Skipping relay.");
+                                                         return; 
+                                                    }
+                                                }
 
                                                 // Notify
                                                 let notifications = listener_state.settings.lock().unwrap().notifications.clone();
@@ -1626,6 +1671,7 @@ pub fn run() {
             send_clipboard,
             delete_history_item,
             set_local_clipboard,
+            confirm_pending_clipboard,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

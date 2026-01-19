@@ -306,6 +306,18 @@ export default function App() {
   const [joinError, setJoinError] = useState("");
   const [expandedNetworks, setExpandedNetworks] = useState<Set<string>>(new Set());
   
+  // Manual Sync State
+  const [manualSyncOpen, setManualSyncOpen] = useState(false);
+  const [pendingReceive, setPendingReceive] = useState<{ text: string, sender: string, timestamp: number } | null>(null);
+  const [localClipboard, setLocalClipboard] = useState(""); // Current local
+  const [lastSentClipboard, setLastSentClipboard] = useState(""); // Last successfully sent
+  // We need to know if Auto-Send is ON/OFF to decide if we show "Pending Send"
+  const [isAutoSend, setIsAutoSend] = useState(true); // Default assumption, updated by Settings
+  // We need to know if Auto-Receive is ON/OFF (though backend handles pending, UI might want state)
+  
+  const hasPendingSend = !isAutoSend && localClipboard !== lastSentClipboard && localClipboard.length > 0;
+  const hasPendingReceive = !!pendingReceive;
+  
   const toggleNetwork = (name: string) => {
       setExpandedNetworks(prev => {
           const next = new Set(prev);
@@ -320,6 +332,15 @@ export default function App() {
       peersRef.current = peers;
   }, [peers]);
 
+  /* Data Fetching */
+  const fetchSettings = () => {
+      invoke<AppSettings>("get_settings").then(s => {
+          setIsAutoSend(s.auto_send);
+      });
+  };
+
+
+
   // Initial Data Fetch
   useEffect(() => {
     // 1. Peers
@@ -331,6 +352,9 @@ export default function App() {
     invoke<string>("get_network_name").then(name => setMyNetworkName(name));
     invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
     invoke<string>("get_hostname").then(h => setMyHostname(h));
+    
+    // 3. Settings
+    fetchSettings();
   }, []);
 
   // Poll/Update PIN when network name changes
@@ -356,48 +380,62 @@ export default function App() {
     });
 
     // Listen for Clipboard Changes
-    // Payload can be string (Legacy) or Object (New)
     const unlistenClipboard = listen<string | { id: string, text: string, timestamp: number, sender: string }>("clipboard-change", (event) => {
       let newItem: HistoryItem;
+      let payloadText = "";
+      let payloadSender = "Unknown";
+      let payloadId = "";
+      let payloadTs = Date.now();
 
       if (typeof event.payload === 'string') {
-           // Legacy / Simple Text
-           newItem = {
-              id: Math.random().toString(36).substring(7),
-              origin: "remote", // Assume remote for simple strings unless we track local state better? Actually local changes emit too.
-              // Wait, local changes emit clipboard-change too!
-              // In legacy, we can't distinguish easy without text comparison?
-              // For now, let's just mark legacy string events as "Unknown" origin or "Received" if unsure.
-              device: "Unknown",
-              ts: Math.floor(Date.now() / 1000),
-              text: event.payload
-          };
+           payloadText = event.payload;
+           payloadId = Math.random().toString(36).substring(7);
+           payloadTs = Math.floor(Date.now() / 1000);
       } else {
-          // Rich Payload
-          const p = event.payload;
-          // Determine origin based on sender
-          // If sender is MY hostname, it's local (sent). If not, remote (received).
-          // We can use a simpler heuristic: If I emitted it, "clipboard-change" is fired for MY changes too.
-          // Wait, lib.rs emits "clipboard-change" for BOTH locally detected changes and decrypted remote ones.
-          // In "clipboard::start_monitor", we calculate `hostname`.
-          // We can get our own hostname in `useEffect` to compare?
-          // Ideally we check if `p.sender === myHostname`.
-          newItem = {
-              id: p.id,
-              origin: "remote", // Default, updated below in effect if possible, or just render based on sender name?
-              // Actually, simpler: Pass "myHostname" to HistoryView or usage.
-              // For data model, let's store the sender.
-              device: p.sender,
-              ts: p.timestamp,
-              text: p.text
-          };
+           const p = event.payload;
+           payloadText = p.text;
+           payloadSender = p.sender;
+           payloadId = p.id;
+           payloadTs = p.timestamp;
       }
 
+      // Update Local Clipboard State
+      // If sender is ME, I just copied it or sent it.
+      // Ideally "get_hostname" is async so we can't easily check synchronously here.
+      // But we can check if it MATCHES `myHostname` state (which is loaded on mount).
+      if (myHostname && payloadSender === myHostname) {
+           setLocalClipboard(payloadText);
+           // If I just SENT it (via manual send), we update `lastSent` elsewhere?
+           // OR if Auto-Send is ON, we assume it's sent?
+           // Actually, if Auto-Send is OFF, `clipboard-change` still fires for local copy.
+           // We don't update `lastSent` here yet.
+      } else {
+           // Remote sender means I received and APPLIED it.
+           // So local clipboard NOW matches this text.
+           setLocalClipboard(payloadText);
+           // And since I didn't send it, `lastSent` is irrelevant (or remains whatever I last sent).
+      }
+      
+      // Update History
+      newItem = {
+          id: payloadId,
+          origin: "remote", 
+          device: payloadSender,
+          ts: payloadTs,
+          text: payloadText
+      };
+
       setClipboardHistory((prev) => {
-          // Dedupe by ID if exists
+          // Dedupe by ID
           if (prev.find(i => i.id === newItem.id)) return prev;
           return [newItem, ...prev].slice(0, 50);
       });
+    });
+
+    const unlistenPending = listen<{ id: string, text: string, timestamp: number, sender: string }>("clipboard-pending", (event) => {
+        setPendingReceive(event.payload);
+        // Maybe open modal automatically? Or just show FAB?
+        // User requested FAB.
     });
 
     const unlistenDelete = listen<string>("history-delete", (event) => {
@@ -428,13 +466,14 @@ export default function App() {
     return () => {
       unlistenPeer.then((f) => f());
       unlistenClipboard.then((f) => f());
+      unlistenPending.then((f) => f());
       unlistenRemove.then((f) => f());
       unlistenReset.then((f) => f());
       unlistenUpdate.then((f) => f());
       unlistenDelete.then((f) => f());
       unlistenPairingFailed.then((f) => f());
     };
-  }, []);
+  }, [myHostname]); // Re-bind if hostname loads (needed for sender check)
 
   /* Handlers */
 
@@ -650,10 +689,42 @@ export default function App() {
              ) : activeView === "history" ? (
                <HistoryView items={clipboardHistory} />
              ) : (
-               <SettingsView onDirtyChange={setUnsavedChanges} showMessage={showMessage} />
+               <SettingsView onDirtyChange={setUnsavedChanges} showMessage={showMessage} onSettingsRefreshed={fetchSettings} />
              )}
            </div>
         </div>
+
+        <ManualSyncFAB 
+            hasPendingSend={hasPendingSend}
+            hasPendingReceive={hasPendingReceive}
+            onClick={() => setManualSyncOpen(true)}
+        />
+        
+        <ManualSyncModal 
+            open={manualSyncOpen}
+            onClose={() => setManualSyncOpen(false)}
+            localContent={localClipboard}
+            remoteContent={pendingReceive}
+            onSend={async () => {
+                try {
+                    await invoke("send_clipboard", { text: localClipboard });
+                    // Store strict equality check for "Last Sent" to avoid re-triggering pending send
+                    setLastSentClipboard(localClipboard);
+                    setManualSyncOpen(false);
+                } catch (e) {
+                    alert("Failed to send: " + e);
+                }
+            }}
+            onReceive={async () => {
+                try {
+                    await invoke("confirm_pending_clipboard");
+                    setPendingReceive(null);
+                    setManualSyncOpen(false);
+                } catch (e) {
+                    alert("Failed to confirm: " + e);
+                }
+            }}
+        />
 
         {/* Modals */}
         <Modal
@@ -1066,10 +1137,12 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
 
 function SettingsView({ 
     onDirtyChange,
-    showMessage 
+    showMessage,
+    onSettingsRefreshed
 }: { 
     onDirtyChange: (dirty: boolean) => void;
     showMessage: (title: string, msg: string, type: "success" | "neutral") => void;
+    onSettingsRefreshed?: () => void;
 }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [initialSettings, setInitialSettings] = useState<AppSettings | null>(null); // For deep compare if needed
@@ -1178,6 +1251,8 @@ function SettingsView({
       setInitialSettings(JSON.parse(JSON.stringify(settings)));
       onDirtyChange(false);
       
+      if (onSettingsRefreshed) onSettingsRefreshed();
+      
       showMessage("Success", msg, "success");
 
     } catch (e) {
@@ -1285,7 +1360,7 @@ function SettingsView({
              <div className="flex items-center justify-between">
                 <div>
                     <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Send</div>
-                    <div className="text-xs text-zinc-500">Automatically broadcast local copies.</div>
+                    <div className="text-xs text-zinc-500">Automatically send local clipboard to the cluster.</div>
                 </div>
                 {/* Simple Toggle Switch */}
                 <button 
@@ -1311,7 +1386,7 @@ function SettingsView({
              <div className="flex items-center justify-between">
                 <div>
                     <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Receive</div>
-                    <div className="text-xs text-zinc-500">Automatically apply remote clips.</div>
+                    <div className="text-xs text-zinc-500">Automatically overwrite local clipboard with data from the cluster.</div>
                 </div>
                 <button 
                     onClick={() => setSettings({...settings, auto_receive: !settings.auto_receive})}
@@ -1419,4 +1494,106 @@ function CopyMini({ text }: { text: string }) {
       <Copy className="h-5 w-5 text-zinc-700 dark:text-zinc-200" />
     </IconButton>
   );
+}
+
+/* --- Manual Sync Components --- */
+
+function ManualSyncFAB({ 
+    hasPendingSend, 
+    hasPendingReceive, 
+    onClick 
+}: { 
+    hasPendingSend: boolean, 
+    hasPendingReceive: boolean, 
+    onClick: () => void 
+}) {
+    if (!hasPendingSend && !hasPendingReceive) return null;
+
+    return (
+        <button
+             onClick={onClick}
+             className="fixed bottom-6 right-6 z-50 flex h-14 w-14 animate-bounce items-center justify-center rounded-full bg-emerald-600 text-white shadow-xl shadow-emerald-600/30 transition hover:scale-105 hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/30"
+        >
+             {hasPendingReceive ? (
+                 <ArrowDown className="h-6 w-6" />
+             ) : (
+                 <Send className="h-6 w-6 pl-0.5" />
+             )}
+             <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-zinc-900">
+                 !
+             </span>
+        </button>
+    );
+}
+
+function ManualSyncModal({
+    open,
+    onClose,
+    localContent,
+    remoteContent, // ClipboardPayload or string
+    onSend,
+    onReceive
+}: {
+    open: boolean;
+    onClose: () => void;
+    localContent: string;
+    remoteContent: { text: string, sender: string, timestamp: number } | null;
+    onSend: () => void;
+    onReceive: () => void;
+}) {
+    if (!open) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+             <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-zinc-950 shadow-2xl ring-1 ring-white/10 text-zinc-50">
+                 <div className="flex items-center justify-between border-b border-white/10 p-5">
+                      <h3 className="text-lg font-semibold">Synchronization</h3>
+                      <button onClick={onClose} className="rounded-lg p-1 hover:bg-white/10">
+                          <span className="text-xl leading-none text-zinc-400">×</span>
+                      </button>
+                 </div>
+                 
+                 <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
+                      {/* Send Column */}
+                      <div className="flex flex-col p-6 gap-4">
+                           <div className="flex items-center gap-2 text-emerald-400">
+                               <ArrowUp className="h-5 w-5" />
+                               <span className="font-medium">Send Local</span>
+                           </div>
+                           <div className="flex-1 rounded-xl bg-white/5 p-4 text-sm font-mono text-zinc-300 h-32 overflow-y-auto whitespace-pre-wrap border border-white/5">
+                                {localContent || <span className="text-zinc-600 italic">Clipboard empty</span>}
+                           </div>
+                           <Button variant="primary" onClick={onSend} disabled={!localContent} iconLeft={<Send className="h-4 w-4" />}>
+                                Broadcast to Cluster
+                           </Button>
+                      </div>
+
+                      {/* Receive Column */}
+                      <div className="flex flex-col p-6 gap-4">
+                           <div className="flex items-center gap-2 text-blue-400">
+                               <ArrowDown className="h-5 w-5" />
+                               <span className="font-medium">Receive Remote</span>
+                           </div>
+                           <div className="flex-1 rounded-xl bg-white/5 p-4 text-sm font-mono text-zinc-300 h-32 overflow-y-auto whitespace-pre-wrap border border-white/5 relative">
+                                {remoteContent ? (
+                                    <>
+                                        {remoteContent.text}
+                                        <div className="absolute bottom-2 right-2 flex gap-2">
+                                            <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-zinc-400">
+                                                From: {remoteContent.sender}
+                                            </span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <span className="text-zinc-600 italic">No pending data</span>
+                                )}
+                           </div>
+                           <Button variant="primary" onClick={onReceive} disabled={!remoteContent} iconLeft={<Copy className="h-4 w-4" />}>
+                                Apply to Clipboard
+                           </Button>
+                      </div>
+                 </div>
+             </div>
+        </div>
+    );
 }

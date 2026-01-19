@@ -32,6 +32,8 @@ pub struct AppState {
     pub settings: Arc<Mutex<AppSettings>>,
     // Pending Removals (Debounce for mDNS)
     pub pending_removals: Arc<Mutex<HashMap<String, u64>>>,
+    // Pending Clipboard Content (Received but not yet applied due to Auto-Receive OFF)
+    pub pending_clipboard: Arc<Mutex<Option<crate::protocol::ClipboardPayload>>>,
     // Shutdown flag for graceful termination of background threads
     pub shutdown: Arc<AtomicBool>,
 }
@@ -51,6 +53,7 @@ impl AppState {
             network_pin: Arc::new(Mutex::new(String::new())),
             settings: Arc::new(Mutex::new(AppSettings::default())),
             pending_removals: Arc::new(Mutex::new(HashMap::new())),
+            pending_clipboard: Arc::new(Mutex::new(None)),
             shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
