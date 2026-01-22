@@ -56,7 +56,7 @@ impl Transport {
     pub async fn send_file_stream(
         &self,
         addr: SocketAddr,
-    ) -> Result<quinn::SendStream, Box<dyn Error + Send + Sync>> {
+    ) -> Result<(quinn::Connection, quinn::SendStream), Box<dyn Error + Send + Sync>> {
         // Use connect_with to enforce specific ALPN config
         let connection = self
             .endpoint
@@ -64,7 +64,7 @@ impl Transport {
             .await?;
         // Use Uni stream for file transfer (Sender -> Receiver)
         let send = connection.open_uni().await?;
-        Ok(send)
+        Ok((connection, send))
     }
 
     pub fn start_listening<F, G>(&self, on_receive_message: F, on_receive_file: G)

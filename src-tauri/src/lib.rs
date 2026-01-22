@@ -1914,7 +1914,7 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                            
                                            // Open QUIC Stream
                                            match transport_inside.send_file_stream(addr).await {
-                                               Ok(mut stream) => {
+                                               Ok((_connection, mut stream)) => {
                                                    // 4. Send Header
                                                    let header = crate::protocol::FileStreamHeader {
                                                        id: req.id,
