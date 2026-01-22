@@ -5199,6 +5199,7 @@ dependencies = [
  "mdns-sd",
  "names",
  "once_cell",
+ "percent-encoding",
  "quinn",
  "rand 0.8.5",
  "rcgen",

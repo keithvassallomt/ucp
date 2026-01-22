@@ -62,31 +62,63 @@ pub fn set_system_clipboard(app: &AppHandle, text: String) -> Result<(), String>
 
 /// Write clipboard files (paths)
 pub fn set_clipboard_files(app: &AppHandle, files: Vec<String>) -> Result<(), String> {
-    // Convert paths to file:// URIs
-    let uris: Vec<String> = files
-        .into_iter()
-        .filter_map(|p| {
-            let path = std::path::Path::new(&p);
-            // Ensure absolute path
-            let abs_path = if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                std::env::current_dir().ok()?.join(path)
-            };
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, use absolute paths directly
+        let paths: Vec<String> = files
+            .into_iter()
+            .filter_map(|p| {
+                let path = std::path::Path::new(&p);
+                if path.is_absolute() {
+                    Some(p)
+                } else {
+                    std::env::current_dir()
+                        .ok()
+                        .map(|c| c.join(path).to_string_lossy().to_string())
+                }
+            })
+            .collect();
 
-            url::Url::from_file_path(abs_path)
-                .ok()
-                .map(|u| u.to_string())
-        })
-        .collect();
+        if paths.is_empty() {
+            return Err("No valid paths".to_string());
+        }
 
-    if uris.is_empty() {
-        return Err("No valid file paths convertible to URIs".to_string());
+        app.state::<Clipboard>()
+            .write_files_uris(paths)
+            .map_err(|e| e.to_string())
     }
 
-    app.state::<Clipboard>()
-        .write_files_uris(uris)
-        .map_err(|e| e.to_string())
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On Linux/macOS, use file:// URIs
+        let uris: Vec<String> = files
+            .into_iter()
+            .filter_map(|p| {
+                let path = std::path::Path::new(&p);
+                // Ensure absolute path
+                let abs_path = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    match std::env::current_dir().ok() {
+                        Some(c) => c.join(path),
+                        None => return None,
+                    }
+                };
+
+                url::Url::from_file_path(abs_path)
+                    .ok()
+                    .map(|u| u.to_string())
+            })
+            .collect();
+
+        if uris.is_empty() {
+            return Err("No valid file paths convertible to URIs".to_string());
+        }
+
+        app.state::<Clipboard>()
+            .write_files_uris(uris)
+            .map_err(|e| e.to_string())
+    }
 }
 
 // Helper for lib.rs legacy call (also used for text)
@@ -264,20 +296,23 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                         let mut valid_paths = Vec::new();
 
                         for path_str in &raw_paths {
-                            // Try to parse as URL first
+                            // Try to parse as URL first (e.g. file://...)
                             let path_buf = if let Ok(u) = url::Url::parse(path_str) {
                                 if u.scheme() == "file" {
                                     if let Ok(p) = u.to_file_path() {
                                         p
                                     } else {
                                         // Metadata decoding failed or not a local file
-                                        std::path::PathBuf::from(path_str)
+                                        std::path::PathBuf::from(path_str) // Fallback
                                     }
                                 } else {
                                     std::path::PathBuf::from(path_str)
                                 }
                             } else {
-                                std::path::PathBuf::from(path_str)
+                                // Not a URI. Check if it's a percent-encoded path string (e.g. Linux path with %20)
+                                let decoded = percent_encoding::percent_decode_str(path_str)
+                                    .decode_utf8_lossy();
+                                std::path::PathBuf::from(decoded.as_ref())
                             };
 
                             let path = path_buf.as_path();
@@ -291,7 +326,25 @@ pub fn start_monitor(app_handle: AppHandle, state: AppState, transport: Transpor
                                 file_metas.push(FileMetadata { name, size });
                                 valid_paths.push(path.to_string_lossy().to_string());
                             } else {
-                                tracing::warn!("Path does not exist or invalid: {:?}", path);
+                                // tracing::warn!("Path does not exist: {:?}", path);
+                                if path_buf.to_string_lossy() != *path_str {
+                                    let raw_p = std::path::Path::new(path_str);
+                                    if raw_p.exists() {
+                                        let name = raw_p
+                                            .file_name()
+                                            .unwrap_or_default()
+                                            .to_string_lossy()
+                                            .to_string();
+                                        let size =
+                                            std::fs::metadata(raw_p).map(|m| m.len()).unwrap_or(0);
+                                        file_metas.push(FileMetadata { name, size });
+                                        valid_paths.push(path_str.clone());
+                                    } else {
+                                        tracing::warn!("Path does not exist: {:?}", path);
+                                    }
+                                } else {
+                                    tracing::warn!("Path does not exist: {:?}", path);
+                                }
                             }
                         }
 
