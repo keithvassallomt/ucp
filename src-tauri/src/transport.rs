@@ -7,19 +7,27 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct Transport {
     pub endpoint: Endpoint,
+    transport_config: ClientConfig,
+    file_config: ClientConfig,
 }
 
 impl Transport {
     pub fn new(port: u16) -> Result<Self, Box<dyn Error>> {
         let (cert_der, key_der) = generate_self_signed_cert()?;
         let server_config = configure_server(cert_der, key_der)?;
-        let client_config = configure_client()?;
+
+        let transport_config = configure_client(vec![b"clustercut-transport".to_vec()])?;
+        let file_config = configure_client(vec![b"clustercut-file".to_vec()])?;
 
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let mut endpoint = Endpoint::server(server_config, addr)?;
-        endpoint.set_default_client_config(client_config);
+        endpoint.set_default_client_config(transport_config.clone());
 
-        Ok(Self { endpoint })
+        Ok(Self {
+            endpoint,
+            transport_config,
+            file_config,
+        })
     }
 
     pub async fn send_message(
@@ -27,14 +35,17 @@ impl Transport {
         addr: SocketAddr,
         data: &[u8],
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let connection = self.endpoint.connect(addr, "clustercut-transport")?.await?;
-        let (mut send, _recv) = connection.open_bi().await?; // Rename recv to _recv
+        // Use connect_with to enforce specific ALPN config
+        let connection = self
+            .endpoint
+            .connect_with(self.transport_config.clone(), addr, "clustercut")?
+            .await?;
+        let (mut send, _recv) = connection.open_bi().await?;
 
         send.write_all(data).await?;
         send.finish()?;
 
         // Give the stream a moment to flush/be accepted before dropping the connection
-        // This is a hack; a better way is to wait for acknowledgement or use a long-lived connection.
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         Ok(())
@@ -46,7 +57,11 @@ impl Transport {
         &self,
         addr: SocketAddr,
     ) -> Result<quinn::SendStream, Box<dyn Error + Send + Sync>> {
-        let connection = self.endpoint.connect(addr, "clustercut-file")?.await?;
+        // Use connect_with to enforce specific ALPN config
+        let connection = self
+            .endpoint
+            .connect_with(self.file_config.clone(), addr, "clustercut")?
+            .await?;
         // Use Uni stream for file transfer (Sender -> Receiver)
         let send = connection.open_uni().await?;
         Ok(send)
@@ -77,8 +92,10 @@ impl Transport {
                             .protocol
                             .map(|p| String::from_utf8_lossy(&p).to_string());
 
-                        // Default to transport if unknown (shouldn't happen with our config)
+                        // Default to transport if unknown
                         let proto = protocol.unwrap_or_else(|| "clustercut-transport".to_string());
+
+                        tracing::debug!("Connection from {} using ALPN: {}", remote_addr, proto);
 
                         if proto == "clustercut-file" {
                             // File Stream Handler
@@ -155,6 +172,7 @@ fn generate_self_signed_cert() -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
     let cert = generate_simple_self_signed(vec![
         "clustercut-transport".into(),
         "clustercut-file".into(),
+        "clustercut".into(), // Add generic SNI validity
     ])?;
     Ok((cert.cert.der().to_vec(), cert.signing_key.serialize_der()))
 }
@@ -180,7 +198,7 @@ fn configure_server(cert_der: Vec<u8>, key_der: Vec<u8>) -> Result<ServerConfig,
     Ok(server_config)
 }
 
-fn configure_client() -> Result<ClientConfig, Box<dyn Error>> {
+fn configure_client(alpn_protocols: Vec<Vec<u8>>) -> Result<ClientConfig, Box<dyn Error>> {
     use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
     use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
     use rustls::{DigitallySignedStruct, SignatureScheme};
@@ -229,17 +247,19 @@ fn configure_client() -> Result<ClientConfig, Box<dyn Error>> {
         }
     }
 
-    let client_config = rustls::ClientConfig::builder()
+    let mut client_config = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
         .with_no_client_auth();
 
+    // Set ALPN protocols on the underlying rustls config
+    client_config.alpn_protocols = alpn_protocols;
+
     // Client ALPN will be set per-connection ("connect(..., alpn)") so we don't need default here,
     // but we can add them to supported.
-    let mut quic_config = quinn::ClientConfig::new(Arc::new(
+    let quic_config = quinn::ClientConfig::new(Arc::new(
         quinn::crypto::rustls::QuicClientConfig::try_from(client_config)?,
     ));
-    // quic_config.alpn_protocols = vec![b"clustercut-transport".to_vec(), b"clustercut-file".to_vec()];
 
     Ok(quic_config)
 }
