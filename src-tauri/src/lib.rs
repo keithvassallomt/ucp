@@ -1387,9 +1387,10 @@ async fn handle_incoming_file_stream(recv: quinn::RecvStream, addr: std::net::So
     // 4. Verify Size?
     if total_written == header.file_size {
         tracing::info!("File Transfer Verified OK: {:?}", file_path);
-        // Add to "Available Files" list in UI? Or notification provided by ClipboardPayload.
-        // If this was Auto-Download, we might want to move it to Downloads?
-        // Or just keep in Cache.
+        // Update System Clipboard
+        if let Some(path_str) = file_path.to_str() {
+             crate::clipboard::set_clipboard_paths(&app, vec![path_str.to_string()]);
+        }
     } else {
         tracing::warn!("File Transfer Incomplete! Expected {}, got {}", header.file_size, total_written);
     }
