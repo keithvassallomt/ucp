@@ -1306,7 +1306,7 @@ pub fn run() {
                     // we might need to rely on the fact that Transient history won't show it.
                     // But for the persistent one ("Files Available"), we want to clear.
                 }
-                #[cfg(not(target_os = "linux"))]
+                #[cfg(target_os = "macos")]
                 {
                      let _ = app_handle.set_badge_count(Some(0));
                 }
