@@ -51,3 +51,6 @@ tauri-plugin-global-shortcut = "2.3.1"
 url = "2.5"
 percent-encoding = "2.3"
 
+[profile.dev.package."*"]
+opt-level = 3
+
