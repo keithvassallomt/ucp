@@ -841,6 +841,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "clustercut"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chacha20poly1305",
+ "clap 4.5.54",
+ "futures",
+ "getrandom 0.2.16",
+ "hostname",
+ "ipnetwork",
+ "local-ip-address",
+ "mdns-sd",
+ "names",
+ "notify-rust",
+ "once_cell",
+ "percent-encoding",
+ "quinn",
+ "rand 0.8.5",
+ "rcgen",
+ "rustls",
+ "serde",
+ "serde_json",
+ "spake2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-notification",
+ "tauri-plugin-opener",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5182,45 +5221,6 @@ dependencies = [
  "webview2-com",
  "window-vibrancy",
  "windows 0.61.3",
-]
-
-[[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "chacha20poly1305",
- "clap 4.5.54",
- "futures",
- "getrandom 0.2.16",
- "hostname",
- "ipnetwork",
- "local-ip-address",
- "mdns-sd",
- "names",
- "notify-rust",
- "once_cell",
- "percent-encoding",
- "quinn",
- "rand 0.8.5",
- "rcgen",
- "rustls",
- "serde",
- "serde_json",
- "spake2",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-notification",
- "tauri-plugin-opener",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "url",
- "uuid",
 ]
 
 [[package]]

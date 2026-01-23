@@ -1308,7 +1308,12 @@ pub fn run() {
                 }
                 #[cfg(target_os = "macos")]
                 {
-                     let _ = app_handle.set_badge_count(Some(0));
+                     // In Tauri v2, badge API is often on the window or requires trait.
+                     // We use the main window.
+                     use tauri::Manager; // Ensure Manager trait is in scope for get_webview_window
+                     if let Some(window) = app_handle.get_webview_window("main") {
+                         let _ = window.set_badge_count(Some(0));
+                     }
                 }
             }
             tauri::RunEvent::Exit => {
