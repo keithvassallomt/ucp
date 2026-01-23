@@ -479,6 +479,12 @@ export default function App() {
         setJoinBusy(false);
     });
 
+    const unlistenNotification = listen("notification-clicked", () => {
+        console.log("Notification clicked! Navigating to History...");
+        setActiveView("history");
+        // Bring window to front handled by backend
+    });
+
     return () => {
       unlistenPeer.then((f) => f());
       unlistenClipboard.then((f) => f());
@@ -488,6 +494,7 @@ export default function App() {
       unlistenUpdate.then((f) => f());
       unlistenDelete.then((f) => f());
       unlistenPairingFailed.then((f) => f());
+      unlistenNotification.then((f) => f());
     };
   }, [myHostname]); // Re-bind if hostname loads (needed for sender check)
 
@@ -1043,10 +1050,22 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
       invoke<string>("get_hostname").then(setMyHostname);
       
       const unlistenPromise = listen<{id: string, fileName: string, total: number, transferred: number}>("file-progress", (e) => {
+         // Update state
          setProgress(p => ({ 
              ...p, 
              [e.payload.id]: { transferred: e.payload.transferred, total: e.payload.total } 
          }));
+
+         // If complete, remove after delay
+         if (e.payload.transferred >= e.payload.total) {
+             setTimeout(() => {
+                  setProgress(p => { 
+                      const n = { ...p }; 
+                      delete n[e.payload.id]; 
+                      return n; 
+                  });
+             }, 2000); // 2 seconds delay to see "100%"
+         }
       });
 
       return () => { unlistenPromise.then(u => u()); };

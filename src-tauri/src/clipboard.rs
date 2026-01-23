@@ -447,7 +447,7 @@ fn broadcast_clipboard(
                             } else {
                                 "Clipboard content broadcasted to cluster."
                             };
-                            crate::send_notification(app_handle, "Clipboard Sent", body);
+                            crate::send_notification(app_handle, "Clipboard Sent", body, false);
                         }
                     }
 
