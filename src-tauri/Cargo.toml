@@ -50,6 +50,7 @@ tauri-plugin-clipboard = "2"
 tauri-plugin-global-shortcut = "2.3.1"
 url = "2.5"
 percent-encoding = "2.3"
+notify-rust = "4"
 
 [profile.dev.package."*"]
 opt-level = 3

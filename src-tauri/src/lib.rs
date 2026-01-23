@@ -116,18 +116,42 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
     }
     
     // 2. Linux Workaround (notify-send)
+    // 2. Linux Workaround (notify-rust via DBus)
     #[cfg(target_os = "linux")]
     {
-        tracing::debug!("[Notification] Linux detected. Attempting notify-send workaround...");
-        match std::process::Command::new("notify-send")
-            .arg("--hint=int:transient:1")
-            .arg(title)
-            .arg(body)
-            .spawn() 
-        {
-            Ok(_) => tracing::debug!("[Notification] notify-send executed successfully."),
-            Err(e) => tracing::error!("[Notification Error] notify-send failed: {}", e),
-        }
+        use notify_rust::Notification;
+        tracing::debug!("[Notification] Linux detected. Using notify-rust via DBus...");
+        
+        let title = title.to_string();
+        let body = body.to_string();
+        
+        // Spawn to avoid blocking main thread (though mostly async)
+        tauri::async_runtime::spawn(async move {
+            let result = Notification::new()
+                .summary(&title)
+                .body(&body)
+                .appname("ClusterCut")
+                .timeout(notify_rust::Timeout::Milliseconds(4000))
+                .action("default", "Open App") // Default click action
+                .show_async()
+                .await;
+                
+            match result {
+                Ok(handler) => {
+                    tracing::debug!("[Notification] Notification sent successfully.");
+                    // Setup listener for action (blocking, involves closure)
+                    handler.wait_for_action(|action| {
+                         tracing::info!("[Notification] Action Invoked: {:?}", action);
+                         if action == "default" {
+                             // Handle default click
+                         }
+                    });
+                },
+                Err(e) => {
+                    tracing::error!("[Notification Error] notify-rust failed: {}", e);
+                }
+            }
+        });
     }
 }
 

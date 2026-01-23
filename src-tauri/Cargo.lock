@@ -5198,6 +5198,7 @@ dependencies = [
  "local-ip-address",
  "mdns-sd",
  "names",
+ "notify-rust",
  "once_cell",
  "percent-encoding",
  "quinn",
