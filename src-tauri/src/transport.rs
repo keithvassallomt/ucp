@@ -191,9 +191,24 @@ fn configure_server(cert_der: Vec<u8>, key_der: Vec<u8>) -> Result<ServerConfig,
         b"clustercut-file".to_vec(),
     ];
 
-    let server_config = ServerConfig::with_crypto(Arc::new(
+    let mut server_config = ServerConfig::with_crypto(Arc::new(
         quinn::crypto::rustls::QuicServerConfig::try_from(crypto)?,
     ));
+
+    // Increase Transport Limits for Server Config
+    let mut transport_config = quinn::TransportConfig::default();
+    // 100MB Stream Window (allows 100MB in flight for a single stream)
+    transport_config.stream_receive_window(quinn::VarInt::from_u32(100 * 1024 * 1024));
+    // 250MB Connection Window (allows multiple streams to sum up to this)
+    transport_config.receive_window(quinn::VarInt::from_u32(250 * 1024 * 1024));
+
+    // Keep Alive
+    transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(5)));
+    transport_config.max_idle_timeout(Some(
+        quinn::IdleTimeout::try_from(std::time::Duration::from_secs(30)).unwrap(),
+    ));
+
+    server_config.transport_config(Arc::new(transport_config));
 
     Ok(server_config)
 }
@@ -257,9 +272,20 @@ fn configure_client(alpn_protocols: Vec<Vec<u8>>) -> Result<ClientConfig, Box<dy
 
     // Client ALPN will be set per-connection ("connect(..., alpn)") so we don't need default here,
     // but we can add them to supported.
-    let quic_config = quinn::ClientConfig::new(Arc::new(
+    let mut quic_config = quinn::ClientConfig::new(Arc::new(
         quinn::crypto::rustls::QuicClientConfig::try_from(client_config)?,
     ));
+
+    // Increase Transport Limits for Client Config
+    let mut transport_config = quinn::TransportConfig::default();
+    transport_config.stream_receive_window(quinn::VarInt::from_u32(100 * 1024 * 1024));
+    transport_config.receive_window(quinn::VarInt::from_u32(250 * 1024 * 1024));
+    transport_config.keep_alive_interval(Some(std::time::Duration::from_secs(5)));
+    transport_config.max_idle_timeout(Some(
+        quinn::IdleTimeout::try_from(std::time::Duration::from_secs(30)).unwrap(),
+    ));
+
+    quic_config.transport_config(Arc::new(transport_config));
 
     Ok(quic_config)
 }
