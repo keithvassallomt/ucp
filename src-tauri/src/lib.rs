@@ -1482,47 +1482,51 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                     let _ = listener_handle.emit("clipboard-change", &payload_obj);
                                     
                                     // Auto-Download Logic
-                                    // Rule: If total size < Limit (e.g. 10MB), and Auto-Receive is ON.
-                                    let auto_recv = listener_state.settings.lock().unwrap().auto_receive;
-                                    let mut total_size = 0u64;
-                                    for f in files { total_size += f.size; }
-                                    
-                                    // Hardcoded limit for now: 100MB (increased from 50MB)
-                                    let size_limit = 100 * 1024 * 1024; 
-                                    
-                                    if auto_recv && total_size < size_limit {
-                                        tracing::info!("Auto-downloading {} files ({} bytes)", files.len(), total_size);
-                                        // Request Each File
-                                        for (idx, _file_meta) in files.iter().enumerate() {
-                                            tracing::info!("Requesting file {}/{}", idx, files.len());
-                                            let req_payload = crate::protocol::FileRequestPayload {
-                                                id: id.clone(),
-                                                file_index: idx,
-                                                offset: 0,
-                                            };
-                                            // Encrypt Request
-                                            if let Ok(req_json) = serde_json::to_vec(&req_payload) {
-                                                if let Ok(req_cipher) = crypto::encrypt(&key_arr, &req_json) {
-                                                    let msg = Message::FileRequest(req_cipher);
-                                                    if let Ok(data) = serde_json::to_vec(&msg) {
-                                                        let transport_clone = transport_inside.clone();
-                                                        let addr_clone = addr;
-                                                        tauri::async_runtime::spawn(async move {
-                                                            let _ = transport_clone.send_message(addr_clone, &data).await;
-                                                        });
+                                    let (auto_recv, enable_ft, size_limit) = {
+                                        let s = listener_state.settings.lock().unwrap();
+                                        (s.auto_receive, s.enable_file_transfer, s.max_auto_download_size)
+                                    };
+
+                                    if !enable_ft {
+                                        tracing::info!("File transfer disabled in settings. Ignoring auto-download.");
+                                    } else {
+                                        let mut total_size = 0u64;
+                                        for f in files { total_size += f.size; }
+                                        
+                                        if auto_recv && total_size <= size_limit {
+                                            tracing::info!("Auto-downloading {} files ({} bytes)", files.len(), total_size);
+                                            // Request Each File
+                                            for (idx, _file_meta) in files.iter().enumerate() {
+                                                tracing::info!("Requesting file {}/{}", idx, files.len());
+                                                let req_payload = crate::protocol::FileRequestPayload {
+                                                    id: id.clone(),
+                                                    file_index: idx,
+                                                    offset: 0,
+                                                };
+                                                // Encrypt Request
+                                                if let Ok(req_json) = serde_json::to_vec(&req_payload) {
+                                                    if let Ok(req_cipher) = crypto::encrypt(&key_arr, &req_json) {
+                                                        let msg = Message::FileRequest(req_cipher);
+                                                        if let Ok(data) = serde_json::to_vec(&msg) {
+                                                            let transport_clone = transport_inside.clone();
+                                                            let addr_clone = addr;
+                                                            tauri::async_runtime::spawn(async move {
+                                                                let _ = transport_clone.send_message(addr_clone, &data).await;
+                                                            });
+                                                        }
                                                     }
                                                 }
                                             }
+                                        } else {
+                                            let notifications = listener_state.settings.lock().unwrap().notifications.clone();
+                                            if notifications.data_received {
+                                                let body = format!("Received {} files from {}. Click to download.", files.len(), sender);
+                                                send_notification(&listener_handle, "Files Available", &body);
+                                            }
                                         }
-                                    } else {
-                                        let notifications = listener_state.settings.lock().unwrap().notifications.clone();
-                                        if notifications.data_received {
-                                            let body = format!("Received {} files from {}. Click to download.", files.len(), sender);
-                                            send_notification(&listener_handle, "Files Available", &body);
-                                        }
-                                    }
-                                }
-                            }
+                                    } // End if !enable_ft else
+                                } // End if !files.is_empty()
+                            } // End if let Some(files)
 
                             // TEXT HANDLING
                             if !text.is_empty() {

@@ -305,6 +305,8 @@ pub struct AppSettings {
     pub notifications: NotificationSettings,
     pub shortcut_send: Option<String>,
     pub shortcut_receive: Option<String>,
+    pub enable_file_transfer: bool,
+    pub max_auto_download_size: u64, // In bytes
 }
 
 impl Default for AppSettings {
@@ -317,6 +319,8 @@ impl Default for AppSettings {
             notifications: NotificationSettings::default(),
             shortcut_send: Some("CommandOrControl+Alt+C".to_string()),
             shortcut_receive: Some("CommandOrControl+Alt+V".to_string()),
+            enable_file_transfer: true,
+            max_auto_download_size: 50 * 1024 * 1024, // 50 MB
         }
     }
 }
