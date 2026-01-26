@@ -110,13 +110,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
 fn get_platform_icon(app: &AppHandle) -> (Image<'static>, bool) {
     #[cfg(target_os = "macos")]
     {
-        (
-            tauri::image::Image::from_bytes(include_bytes!(
-                "../icons/pdf/clustercut-tray.Template.pdf"
-            ))
-            .expect("Failed to load macOS tray icon"),
-            true,
-        )
+        get_themed_icon(app)
     }
 
     #[cfg(target_os = "windows")]
@@ -130,7 +124,7 @@ fn get_platform_icon(app: &AppHandle) -> (Image<'static>, bool) {
 
     #[cfg(target_os = "linux")]
     {
-        get_linux_icon(app)
+        get_themed_icon(app)
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -139,8 +133,8 @@ fn get_platform_icon(app: &AppHandle) -> (Image<'static>, bool) {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn get_linux_icon(app: &AppHandle) -> (Image<'static>, bool) {
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn get_themed_icon(app: &AppHandle) -> (Image<'static>, bool) {
     use tauri::Theme;
 
     // Attempt to detect theme via Main Window
@@ -153,7 +147,7 @@ fn get_linux_icon(app: &AppHandle) -> (Image<'static>, bool) {
         Theme::Light // Fallback if no window
     };
 
-    tracing::info!("Detected Linux System Theme: {:?}", theme);
+    tracing::info!("Detected System Theme: {:?}", theme);
 
     match theme {
         Theme::Dark => (
@@ -179,10 +173,10 @@ fn get_linux_icon(app: &AppHandle) -> (Image<'static>, bool) {
 }
 
 pub fn update_tray_icon(app: &AppHandle) {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         if let Some(tray) = app.tray_by_id("main-tray") {
-            let (icon, _is_template) = get_linux_icon(app);
+            let (icon, _is_template) = get_themed_icon(app);
             let _ = tray.set_icon(Some(icon));
         }
     }
