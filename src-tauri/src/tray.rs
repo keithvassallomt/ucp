@@ -106,7 +106,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
     // Build Tray
     let tray = TrayIconBuilder::with_id("main-tray")
         .menu(&menu)
-        .show_menu_on_left_click(false)
+        .show_menu_on_left_click(cfg!(target_os = "macos"))
         .icon(icon)
         .icon_as_template(is_template)
         .on_menu_event(move |app: &AppHandle, event| {
