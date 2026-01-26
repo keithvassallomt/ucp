@@ -160,6 +160,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
             }
         })
         .on_tray_icon_event(|tray: &TrayIcon<Wry>, event| {
+            #[cfg(target_os = "linux")]
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
@@ -254,7 +255,8 @@ pub fn update_tray_icon(app: &AppHandle) {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         if let Some(tray) = app.tray_by_id("main-tray") {
-            let (icon, _is_template) = get_themed_icon(app);
+            let (icon, is_template) = get_themed_icon(app);
+            let _ = tray.set_icon_as_template(is_template);
             let _ = tray.set_icon(Some(icon));
         }
     }
@@ -269,8 +271,8 @@ pub fn set_badge(app: &AppHandle, show: bool) {
         if !show {
             // Restore default icon
             let (icon, is_template) = get_platform_icon(app);
-            let _ = tray.set_icon(Some(icon));
             let _ = tray.set_icon_as_template(is_template);
+            let _ = tray.set_icon(Some(icon));
             return;
         }
 
@@ -312,7 +314,10 @@ pub fn set_badge(app: &AppHandle, show: bool) {
         #[cfg(not(target_os = "windows"))]
         let format = image::ImageFormat::Png;
 
-        if let Ok(mut img) = image::load_from_memory_with_format(&icon_bytes, format) {
+        if let Ok(dynamic_img) = image::load_from_memory_with_format(&icon_bytes, format) {
+            // Force RGBA8 to ensure colors are preserved (fixes macOS "Gray Dot" issue)
+            let mut img = dynamic_img.into_rgba8();
+
             // Draw Red Dot (Top Right)
             // 20% size, 5% padding
             let (w, h) = (img.width(), img.height());
@@ -320,7 +325,6 @@ pub fn set_badge(app: &AppHandle, show: bool) {
             let padding = (w as f32 * 0.05) as u32; // 5% padding
 
             // For RGBA drawing manually
-            use image::GenericImage;
             use image::Rgba;
 
             let red = Rgba([255, 0, 0, 255]);
