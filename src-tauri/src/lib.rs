@@ -1328,6 +1328,12 @@ pub fn run() {
                     // we might need to rely on the fact that Transient history won't show it.
                     // But for the persistent one ("Files Available"), we want to clear.
                 }
+                #[cfg(desktop)]
+                {
+                     // Clear custom tray badge
+                     crate::tray::set_badge(app_handle, false);
+                }
+
                 #[cfg(target_os = "macos")]
                 {
                      // In Tauri v2, badge API is often on the window or requires trait.
@@ -1608,7 +1614,20 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                             if let Some(files) = &payload.files {
                                 if !files.is_empty() {
                                     #[cfg(desktop)]
-                                    crate::tray::set_badge(&listener_handle, true);
+                                    {
+                                        let should_badge = if let Some(window) = listener_handle.get_webview_window("main") {
+                                            match window.is_focused() {
+                                                Ok(focused) => !focused,
+                                                Err(_) => true,
+                                            }
+                                        } else {
+                                            true
+                                        };
+                                        
+                                        if should_badge {
+                                            crate::tray::set_badge(&listener_handle, true);
+                                        }
+                                    }
                                 }
                             }
                             

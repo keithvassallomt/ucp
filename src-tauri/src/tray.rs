@@ -106,7 +106,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
     // Build Tray
     let tray = TrayIconBuilder::with_id("main-tray")
         .menu(&menu)
-        .show_menu_on_left_click(cfg!(target_os = "macos"))
+        .show_menu_on_left_click(cfg!(any(target_os = "macos", target_os = "windows")))
         .icon(icon)
         .icon_as_template(is_template)
         .on_menu_event(move |app: &AppHandle, event| {
@@ -348,9 +348,9 @@ pub fn set_badge(app: &AppHandle, show: bool) {
                 .is_ok()
             {
                 if let Ok(icon) = tauri::image::Image::from_bytes(&buf) {
-                    let _ = tray.set_icon(Some(icon));
-                    // Disable template mode so Red dot shows (on macOS)
+                    // Disable template mode FIRST so the new icon is treated as colored
                     let _ = tray.set_icon_as_template(false);
+                    let _ = tray.set_icon(Some(icon));
                 }
             }
         }
