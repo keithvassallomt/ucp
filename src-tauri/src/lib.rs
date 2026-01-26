@@ -891,14 +891,14 @@ pub fn run() {
             let port = transport.local_addr().expect("Failed to get port").port();
             tracing::info!("QUIC Transport listening on port {}", port);
 
-            let app_handle = app.handle();
-
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            let app_handle = app.handle();
             
             #[cfg(desktop)]
             {
-                let _ = crate::tray::create_tray(app_handle);
+                let _ = crate::tray::create_tray(&app_handle);
             }
 
             // Load State
