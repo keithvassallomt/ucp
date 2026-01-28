@@ -32,7 +32,6 @@
     "macOS": {
       "entitlements": "Entitlements.plist",
       "dmg": {
-        "background": "./assets/dmg-background.png",
         "windowSize": {
           "width": 660,
           "height": 384
