@@ -67,3 +67,19 @@ npm run tauri build
 **Output Location:**
 - `.dmg` image: `src-tauri/target/release/bundle/dmg/`
 - `.app` bundle: `src-tauri/target/release/bundle/macos/`
+
+## Troubleshooting
+
+### Capturing Build Logs
+If the build fails and you need to share the errors, you can save the output to a file.
+
+**Windows (PowerShell):**
+```powershell
+npm run tauri build *>&1 | Tee-Object build_log.txt
+```
+*This command runs the build, shows the output on screen, AND saves it to `build_log.txt`.*
+
+**Linux / macOS:**
+```bash
+npm run tauri build 2>&1 | tee build_log.txt
+```
