@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=ClusterCut
+Comment=Cross-platform Clipboard Sync
+Exec=clustercut
+Icon=com.keithvassallo.clustercut
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=clipboard;sync;transfer;
+StartupWMClass=clustercut

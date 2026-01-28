@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 dev/
+# Flatpak
+src-tauri/flatpak/.flatpak-builder/
+src-tauri/flatpak/build-dir/
+src-tauri/flatpak/shared-modules/

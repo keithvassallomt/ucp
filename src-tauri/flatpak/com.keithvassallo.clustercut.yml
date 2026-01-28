@@ -1,0 +1,112 @@
+app-id: com.keithvassallo.clustercut
+runtime: org.gnome.Platform
+runtime-version: '49'
+sdk: org.gnome.Sdk
+command: clustercut
+finish-args:
+  # Network access for syncing
+  - --share=network
+  # IPC for X11 performance
+  - --share=ipc
+  # GUI access (Wayland + X11)
+  - --socket=wayland
+  - --socket=x11
+  # System Tray Icon (StatusNotifierItem)
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # GPU acceleration
+  - --device=dri
+  # Audio access (for notifications)
+  - --socket=pulseaudio
+  # Access to user's Downloads folder (if needed for file sharing, optional)
+  - --filesystem=xdg-download
+modules:
+  - name: intltool
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://launchpad.net/intltool/trunk/0.51.0/+download/intltool-0.51.0.tar.gz
+        sha256: 67c74d94196b153b774ab9f89b2fa6c6ba79352407037c8c14d5aeb334e959cd
+  - name: gnome-common
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/gnome-common/3.18/gnome-common-3.18.0.tar.xz
+        sha256: 22569e370ae755e04527b76328befc4c73b62bfd4a572499fde116b8318af8cf
+  - name: dbus-glib
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-gtk-doc
+    sources:
+      - type: archive
+        url: https://dbus.freedesktop.org/releases/dbus-glib/dbus-glib-0.114.tar.gz
+        sha256: c09c5c085b2a0e391b8ee7d783a1d63fe444e96717cc1814d61b5e8fc2827a7c
+  - name: libdbusmenu
+    buildsystem: autotools
+    build-options:
+      cflags: -Wno-error
+      env:
+        HAVE_VALGRIND_FALSE: '#'
+        HAVE_VALGRIND_TRUE: ''
+    config-opts:
+      - --with-gtk=3
+      - --disable-dumper
+      - --disable-static
+      - --disable-tests
+      - --disable-gtk-doc
+      - --enable-introspection=no
+      - --disable-vala
+    sources:
+      - type: archive
+        url: https://launchpad.net/libdbusmenu/16.04/16.04.0/+download/libdbusmenu-16.04.0.tar.gz
+        sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+      - type: patch
+        path: 0001-Fix-HAVE_VALGRIND-AM_CONDITIONAL.patch
+  - name: ayatana-ido
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_INTROSPECTION=OFF
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/ayatana-ido.git
+        tag: 0.10.4
+        commit: f968079b09e2310fefc3fc307359025f1c74b3eb
+      - type: patch
+        path: 0001-Make-introspection-configurable.patch
+  - name: libayatana-indicator
+    buildsystem: cmake-ninja
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-indicator.git
+        tag: 0.9.4
+        commit: 611bb384b73fa6311777ba4c41381a06f5b99dad
+  - name: libayatana-appindicator
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DENABLE_BINDINGS_MONO=NO
+      - -DENABLE_BINDINGS_VALA=NO
+      - -DENABLE_GTKDOC=NO
+    sources:
+      - type: git
+        url: https://github.com/AyatanaIndicators/libayatana-appindicator.git
+        tag: 0.5.94
+        commit: 31e8bb083b307e1cc96af4874a94707727bd1e79
+  - name: clustercut
+    buildsystem: simple
+    build-commands:
+      # Copy the binary to /app/bin
+      - install -D clustercut /app/bin/clustercut
+      # Copy the icons (optional but good for testing)
+      - install -D icon-512.png /app/share/icons/hicolor/512x512/apps/com.keithvassallo.clustercut.png
+      # Install the .desktop file
+      - install -D com.keithvassallo.clustercut.desktop /app/share/applications/com.keithvassallo.clustercut.desktop
+    sources:
+      # 1. The main binary (MUST BE BUILT FIRST via npm run tauri build)
+      - type: file
+        path: ../target/release/clustercut
+      # 2. The desktop file (we will create this locally next)
+      - type: file
+        path: com.keithvassallo.clustercut.desktop
+      # 3. The icon
+      - type: file
+        path: icon-512.png

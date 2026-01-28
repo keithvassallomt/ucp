@@ -28,19 +28,15 @@ The installer will be located at:
 ## Linux
 
 ### 1. System Requirements
-install the webkit2gtk dependencies:
-
+**Debian/Ubuntu:**
 ```bash
 sudo apt-get update
-sudo apt-get install libwebkit2gtk-4.0-dev \
-    build-essential \
-    curl \
-    wget \
-    file \
-    libssl-dev \
-    libgtk-3-dev \
-    libayatana-appindicator3-dev \
-    librsvg2-dev
+sudo apt-get install -y libwebkit2gtk-4.0-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+**Fedora:**
+```bash
+sudo dnf install webkit2gtk3-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel libayatana-appindicator-gtk3-devel fuse rpm-build
 ```
 
 ### 2. Build Release (.deb & .AppImage)
@@ -52,6 +48,32 @@ npm run tauri build
 **Output Location:**
 - `.deb` package: `src-tauri/target/release/bundle/deb/`
 - AppImage: `src-tauri/target/release/bundle/appimage/`
+
+### 3. Build Flatpak (Optional)
+
+**Prerequisites:**
+
+1.  Clone `flathub/shared-modules` inside `src-tauri/flatpak`:
+    ```bash
+    git clone https://github.com/flathub/shared-modules.git src-tauri/flatpak/shared-modules
+    ```
+2.  Install the GNOME 47 Platform:
+    ```bash
+    flatpak install flathub org.gnome.Platform//47 org.gnome.Sdk//47
+    ```
+
+**Build Command:**
+
+```bash
+cd src-tauri/flatpak
+flatpak-builder --user --install --force-clean build-dir com.keithvassallo.clustercut.yml
+```
+
+**Run:**
+
+```bash
+flatpak run com.keithvassallo.clustercut
+```
 
 ## macOS
 
