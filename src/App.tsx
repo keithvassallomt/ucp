@@ -636,9 +636,7 @@ export default function App() {
         {/* Header */}
         <header className="flex items-center justify-between mb-4 shrink-0 px-2">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-blue-500 shadow-lg shadow-emerald-500/20">
-              <Wifi className="h-5 w-5 text-white" />
-            </div>
+            <img src="/logo.png" alt="Logo" className="h-10 w-10 drop-shadow-sm" />
             <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
                 ClusterCut
             </h1>

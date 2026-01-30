@@ -1320,16 +1320,9 @@ pub fn run() {
                 // Clear badge on focus
                 #[cfg(target_os = "linux")]
                 {
-                    use tauri_plugin_notification::NotificationExt;
-                    // Hinting "0" or "transient" might be needed?
-                    // With dbus, usually just replacing or clearing isn't standard.
-                    // But if we use tauri badging plugin, it might work?
-                    // Let's try the native tauri badge set to 0.
-                    let _ = app_handle.notification().builder().body("").show(); // Dummy? No.
-                    // Access badging if available.
-                    // Since we don't have badging plugin setup explicitly in rust code (it's in capabilities),
-                    // we might need to rely on the fact that Transient history won't show it.
-                    // But for the persistent one ("Files Available"), we want to clear.
+                    // Linux does not have a standard way to clear badges via notification hints 
+                    // that is consistent across all DEs without side effects (like empty notifications).
+                    // We simply do nothing here for now to avoid the "Empty Notification" bug.
                 }
                 #[cfg(desktop)]
                 {
