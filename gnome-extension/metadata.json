@@ -5,5 +5,9 @@
   "shell-version": [
     "45", "46", "47", "48", "49"
   ],
-  "url": "https://github.com/keithvassallomt/ClusterCut"
+  "url": "https://github.com/keithvassallomt/ClusterCut",
+  "version-name": "1.0",
+  "donations": {
+    "github": "keithvassallomt"
+  }
 }

@@ -43,28 +43,12 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
             toggleMode: true,
         });
 
-        const iconPath = extensionObject.path + '/icons/hicolor/symbolic/apps/clustercut-symbolic.svg';
-        console.log(`ClusterCut: Checking icon path: ${iconPath}`);
-        const iconFile = Gio.File.new_for_path(iconPath);
-        
-        let iconSet = false;
-        
-        if (iconFile.query_exists(null)) {
-             console.log('ClusterCut: Icon file exists. Setting GIcon.');
-             const gicon = new Gio.FileIcon({ file: iconFile });
-             this._toggle.gicon = gicon;
-             iconSet = true;
-        } else {
-             console.log('ClusterCut: Icon file DOES NOT exist.');
-        }
-        
-        if (!iconSet) {
-             console.log('ClusterCut: Falling back to edit-paste-symbolic');
-             this._toggle.iconName = 'edit-paste-symbolic';
-        }
-        
+        // Set default/fallback initially to avoid blocking
+        this._toggle.iconName = 'edit-paste-symbolic';
         this._toggle.subtitle = 'Searching...';
-        this._toggle.checked = false; 
+        this._toggle.checked = false;
+
+        this._checkIcon(extensionObject.path);
 
         // Add to the indicator's list
         this.quickSettingsItems.push(this._toggle);
@@ -76,9 +60,9 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
             '/org/gnome/Shell/Extensions/ClusterCut',
             (proxy, error) => {
                 if (error) {
-                    console.error('ClusterCut: Proxy creation failed', error);
+                    // console.error('ClusterCut: Proxy creation failed', error);
                 } else {
-                    this._proxy.connectSignal('StateChanged', (proxy, senderName, [autoSend, autoReceive]) => {
+                    this._proxySignalId = this._proxy.connectSignal('StateChanged', (proxy, senderName, [autoSend, autoReceive]) => {
                          this._updateInternalState(autoSend, autoReceive);
                     });
                 }
@@ -92,14 +76,14 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
             'com.keithvassallo.clustercut',
             Gio.BusNameWatcherFlags.NONE,
             (conn, name, owner) => {
-                console.log(`ClusterCut: Connected to ${owner}`);
+                // console.log(`ClusterCut: Connected to ${owner}`);
                 this._appRunning = true;
                 this._toggle.subtitle = 'Syncing...';
                 this._toggle.reactive = true;
                 this._updateState();
             },
             (conn, name) => {
-                console.log('ClusterCut: App Lost/Not Found');
+                // console.log('ClusterCut: App Lost/Not Found');
                 this._appRunning = false;
                 this._toggle.subtitle = 'Not running';
                 this._toggle.checked = false;
@@ -108,7 +92,7 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
         );
 
         // Connect Toggle Click
-        this._toggle.connect('clicked', () => {
+        this._toggleSignalId = this._toggle.connect('clicked', () => {
              if (!this._appRunning) {
                  this._toggle.subtitle = 'Launching...';
                  this._tryLaunchApp();
@@ -126,7 +110,7 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
                                    this._updateState();
                                });
                           } else {
-                              console.error('ClusterCut: ToggleAutoSend failed', err);
+                              // console.error('ClusterCut: ToggleAutoSend failed', err);
                           }
                      });
                  } else {
@@ -137,7 +121,7 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
                                    this._updateState();
                                });
                           } else {
-                              console.error('ClusterCut: ToggleAutoSend failed', err);
+                              // console.error('ClusterCut: ToggleAutoSend failed', err);
                           }
                      });
                  }
@@ -172,6 +156,24 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
         });
     }
 
+    async _checkIcon(extensionPath) {
+        const iconPath = extensionPath + '/icons/hicolor/symbolic/apps/clustercut-symbolic.svg';
+        const iconFile = Gio.File.new_for_path(iconPath);
+        
+        try {
+            // Async check using query_info_async
+            await iconFile.query_info_async(Gio.FILE_ATTRIBUTE_STANDARD_NAME, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, null);
+            
+            // If we get here, file exists
+            if (this._toggle) {
+                 const gicon = new Gio.FileIcon({ file: iconFile });
+                 this._toggle.gicon = gicon;
+            }
+        } catch (e) {
+            // File likely doesn't exist or other error, fallback remains 'edit-paste-symbolic'
+        }
+    }
+
     _tryLaunchApp() {
         let appInfo = Gio.AppInfo.get_all().find(a => a.get_id() === 'com.keithvassallo.clustercut.desktop');
         if (appInfo) {
@@ -180,20 +182,22 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
             try {
                 Gio.AppInfo.create_from_commandline('clustercut', null, Gio.AppInfoCreateFlags.NONE).launch([], null);
             } catch (e) {
-                console.error('Failed to launch ClusterCut', e);
-                this._toggle.subtitle = 'Launch failed';
+                // console.error('Failed to launch ClusterCut', e);
+                if (this._toggle) this._toggle.subtitle = 'Launch failed';
             }
         }
     }
 
     _updateInternalState(autoSend, autoReceive) {
+        if (!this._toggle) return;
+
         this._toggle.set({ checked: autoSend && autoReceive });
         
         // Update Menu Labels
-        if (this._autoSendItem) {
+        if (this._autoSendItem && this._autoSendItem.label) {
             this._autoSendItem.label.text = autoSend ? 'Disable Auto-Send' : 'Enable Auto-Send';
         }
-        if (this._autoReceiveItem) {
+        if (this._autoReceiveItem && this._autoReceiveItem.label) {
             this._autoReceiveItem.label.text = autoReceive ? 'Disable Auto-Receive' : 'Enable Auto-Receive';
         }
         
@@ -218,7 +222,7 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
 
         this._proxy.GetStateRemote((result, error) => {
             if (error) {
-                console.error('ClusterCut: GetStateRemote failed', error);
+                // console.error('ClusterCut: GetStateRemote failed', error);
                 return;
             }
             if (result) {
@@ -230,7 +234,7 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
                      autoSend = result[0];
                      autoReceive = result[1];
                 } else {
-                    console.error('ClusterCut: Unexpected result format' + JSON.stringify(result));
+                    // console.error('ClusterCut: Unexpected result format' + JSON.stringify(result));
                 }
                 
                 this._updateInternalState(autoSend, autoReceive);
@@ -243,7 +247,28 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
             Gio.bus_unwatch_name(this._watchId);
             this._watchId = 0;
         }
-        this._toggle.destroy();
+
+        // Clean up proxy signal
+        if (this._proxySignalId && this._proxy) {
+            this._proxy.disconnectSignal(this._proxySignalId);
+            this._proxySignalId = null;
+        }
+
+        // Clean up toggle signal if we stored it (we didn't before, but now we should)
+        if (this._toggleSignalId && this._toggle) {
+            this._toggle.disconnect(this._toggleSignalId);
+            this._toggleSignalId = null;
+        }
+
+        if (this._toggle) {
+            this._toggle.destroy();
+            this._toggle = null;
+        }
+        
+        // Disconnect items
+        if (this._autoSendItem) this._autoSendItem = null;
+        if (this._autoReceiveItem) this._autoReceiveItem = null;
+
         this.emit('destroy');
     }
 });
@@ -251,19 +276,23 @@ class ClusterCutIndicator extends QuickSettings.SystemIndicator {
 export default class ClusterCutExtension extends Extension {
     enable() {
         // Try to register Icon Path via Gtk.IconTheme
-        // Explicitly check for display
         try {
             const display = Gdk.Display.get_default();
             if (display) {
                 let theme = Gtk.IconTheme.get_for_display(display);
-                if (!theme.get_search_path().includes(this.path + '/icons')) {
-                    theme.add_search_path(this.path + '/icons');
+                let themePath = this.path + '/icons';
+                let currentPaths = theme.get_search_path();
+                
+                if (!currentPaths.includes(themePath)) {
+                    // We need to keep track if we added it, but checking existence is usually enough
+                    // strictly speaking we should only remove it if we added it, but for extensions
+                    // it is generally assumed we manage our own path.
+                    theme.add_search_path(themePath);
+                    this._iconPathAdded = true;
                 }
-            } else {
-                console.warn('ClusterCut: Gdk.Display.get_default() returned null. IconTheme registration skipped.');
             }
         } catch (e) {
-             console.error('ClusterCut: IconTheme registration exception:', e);
+             // console.error('ClusterCut: IconTheme registration exception:', e);
         }
 
         this._indicator = new ClusterCutIndicator(this);
@@ -275,6 +304,25 @@ export default class ClusterCutExtension extends Extension {
             this._indicator.quickSettingsItems.forEach(item => item.destroy());
             this._indicator.destroy();
             this._indicator = null;
+        }
+
+        // Clean up Icon Theme
+        if (this._iconPathAdded) {
+            try {
+                const display = Gdk.Display.get_default();
+                if (display) {
+                    let theme = Gtk.IconTheme.get_for_display(display);
+                    let themePath = this.path + '/icons';
+                    let currentPaths = theme.get_search_path();
+                    
+                    // Filter out our path
+                    let newPaths = currentPaths.filter(p => p !== themePath);
+                    theme.set_search_path(newPaths);
+                }
+            } catch (e) {
+                // console.error('ClusterCut: Failed to restore icon search path', e);
+            }
+            this._iconPathAdded = false;
         }
     }
 }
