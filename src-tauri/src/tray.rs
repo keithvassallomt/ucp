@@ -77,6 +77,10 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
 
     // Initial state sync
     let state = app.state::<AppState>();
+
+    // Store Menu Handle in State
+    *state.tray_menu.lock().unwrap() = Some(menu.clone());
+
     let settings = state.settings.lock().unwrap();
 
     #[cfg(not(target_os = "linux"))]
@@ -275,8 +279,54 @@ pub fn update_tray_icon(app: &AppHandle) {
     }
 }
 
-pub fn update_tray_menu(_app: &AppHandle) {
-    // STUB
+pub fn update_tray_menu(app: &AppHandle) {
+    let state = app.state::<AppState>();
+
+    // Lock and get the menu handle
+    let menu_guard = state.tray_menu.lock().unwrap();
+    if let Some(menu) = menu_guard.as_ref() {
+        let settings = state.settings.lock().unwrap();
+
+        // Update Auto-Send
+        if let Some(item) = menu.get("toggle_auto_send") {
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(menu_item) = item.as_menuitem() {
+                    let _ = menu_item.set_text(if settings.auto_send {
+                        "Disable Auto-Send"
+                    } else {
+                        "Enable Auto-Send"
+                    });
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                if let Some(check_item) = item.as_check_menu_item() {
+                    let _ = check_item.set_checked(settings.auto_send);
+                }
+            }
+        }
+
+        // Update Auto-Receive
+        if let Some(item) = menu.get("toggle_auto_receive") {
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(menu_item) = item.as_menuitem() {
+                    let _ = menu_item.set_text(if settings.auto_receive {
+                        "Disable Auto-Receive"
+                    } else {
+                        "Enable Auto-Receive"
+                    });
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                if let Some(check_item) = item.as_check_menu_item() {
+                    let _ = check_item.set_checked(settings.auto_receive);
+                }
+            }
+        }
+    }
 }
 
 pub fn set_badge(app: &AppHandle, show: bool) {

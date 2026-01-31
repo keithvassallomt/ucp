@@ -284,7 +284,7 @@ fn save_settings(
     crate::storage::save_settings(&app_handle, &settings);
     let _ = app_handle.emit("settings-changed", settings.clone());
     
-    #[cfg(all(desktop, not(target_os = "linux")))]
+    #[cfg(desktop)]
     crate::tray::update_tray_menu(&app_handle);
     
     // Update Shortcuts
@@ -1253,7 +1253,7 @@ pub fn run() {
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-                    let timeout = 60; // 60 seconds timeout
+                    let timeout = 300; // 300 seconds (5 minutes) timeout to allow for network hiccups
 
                     // Fix Deadlock: Acquire known_peers FIRST, then peers.
                     // This matches perform_factory_reset and PeerDiscovery.

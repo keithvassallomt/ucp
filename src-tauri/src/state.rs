@@ -41,6 +41,8 @@ pub struct AppState {
     pub local_files: Arc<Mutex<HashMap<String, Vec<String>>>>,
     // Transport instance for sending messages from commands
     pub transport: Arc<Mutex<Option<crate::transport::Transport>>>,
+    // Tray Menu Handle
+    pub tray_menu: Arc<Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>,
 }
 
 impl AppState {
@@ -62,6 +64,7 @@ impl AppState {
             shutdown: Arc::new(AtomicBool::new(false)),
             local_files: Arc::new(Mutex::new(HashMap::new())),
             transport: Arc::new(Mutex::new(None)),
+            tray_menu: Arc::new(Mutex::new(None)),
         }
     }
 
