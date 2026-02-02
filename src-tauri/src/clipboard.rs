@@ -447,7 +447,13 @@ fn broadcast_clipboard(
                             } else {
                                 "Clipboard content broadcasted to cluster."
                             };
-                            crate::send_notification(app_handle, "Clipboard Sent", body, false);
+                            crate::send_notification(
+                                app_handle,
+                                "Clipboard Sent",
+                                body,
+                                false,
+                                Some("clipboard_status"),
+                            );
                         }
                     }
 

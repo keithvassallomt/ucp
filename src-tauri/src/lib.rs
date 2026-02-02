@@ -108,15 +108,19 @@ use transport::Transport;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 // Helper to broadcast a new peer to all known peers (Gossip)
-pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str, increment_badge: bool) {
+pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str, increment_badge: bool, _id: Option<&str>) {
     // 1. Native Plugin (Windows/macOS)
     #[cfg(not(target_os = "linux"))]
     {
         use tauri_plugin_notification::NotificationExt;
-        let builder = app_handle.notification().builder()
+        let mut builder = app_handle.notification().builder()
             .title(title)
             .body(body)
             .sound("Ping");
+            
+        if let Some(id_val) = _id {
+            builder = builder.id(id_val).group("ClusterCut");
+        }
             
         // Note: The native plugin might auto-increment badge on macOS depending on permission config.
         // There is no explicit "increment_badge" builder method in v2 plugin yet documented, 
@@ -201,7 +205,7 @@ fn check_and_notify_leave(app_handle: &tauri::AppHandle, state: &AppState, peer:
         if let Some(remote_net) = &peer.network_name {
             if *remote_net == local_net {
                 tracing::info!("[Notification] Device Left: {}", peer.hostname);
-                send_notification(app_handle, "Device Left", &format!("{} has left the cluster", peer.hostname), false);
+                send_notification(app_handle, "Device Left", &format!("{} has left the cluster", peer.hostname), false, Some("cluster_membership"));
             }
         }
     }
@@ -504,7 +508,7 @@ async fn probe_ip(
                       let notifications = state.settings.lock().unwrap().notifications.clone();
                       if notifications.device_join {
                          tracing::info!("[Notification] Triggering 'Device Joined' for manual peer: {}", peer.hostname);
-                         send_notification(&app_handle, "Device Joined", &format!("Found manual peer: {}", peer.hostname), false);
+                         send_notification(&app_handle, "Device Joined", &format!("Found manual peer: {}", peer.hostname), false, Some("cluster_membership"));
                       } else {
                          tracing::debug!("[Notification] Device join notification suppressed by settings for manual peer: {}", peer.hostname);
                       }
@@ -803,7 +807,7 @@ async fn send_clipboard(
                      // Notify locally
                      let notifications = state.settings.lock().unwrap().notifications.clone();
                      if notifications.data_sent {
-                         send_notification(&app_handle, "Clipboard Sent", "Manual broadcast successful.", false);
+                         send_notification(&app_handle, "Clipboard Sent", "Manual broadcast successful.", false, Some("clipboard_status"));
                      }
                      
                      Ok(())
@@ -1063,7 +1067,7 @@ pub fn run() {
                                         if should_notify {
                                             if d_state.settings.lock().unwrap().notifications.device_join {
                                                 tracing::info!("[Notification] Triggering 'Device Joined' for discovered peer: {}", peer.hostname);
-                                                send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname), false);
+                                                send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname), false, Some("cluster_membership"));
                                             } else {
                                                 tracing::debug!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
                                             }                                      } else {
@@ -1564,7 +1568,7 @@ async fn handle_incoming_file_stream(recv: quinn::RecvStream, addr: std::net::So
      let settings = state.settings.lock().unwrap();
      if settings.notify_large_files && header.file_size > settings.max_auto_download_size {
          let body = format!("Download complete: {}", header.file_name);
-         send_notification(&app, "Download Complete", &body, false);
+         send_notification(&app, "Download Complete", &body, false, None);
      }
 
     // 5. Verify Size
@@ -1731,7 +1735,7 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                             let settings = listener_state.settings.lock().unwrap();
                                             if settings.notify_large_files {
                                                 let body = format!("Received {} files from {}. Click to download.", files.len(), sender);
-                                                send_notification(&listener_handle, "Files Available", &body, true);
+                                                send_notification(&listener_handle, "Files Available", &body, true, None);
                                             }
                                         }
                                     } // End if !enable_ft else
@@ -1756,7 +1760,7 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                 
                                 let notifications = listener_state.settings.lock().unwrap().notifications.clone();
                                 if notifications.data_received {
-                                    send_notification(&listener_handle, "Clipboard Received", "Content copied to clipboard", false);
+                                    send_notification(&listener_handle, "Clipboard Received", "Content copied to clipboard", false, Some("clipboard_status"));
                                 }
                             }
 
@@ -2367,7 +2371,7 @@ fn handle_shortcut(app_handle: &tauri::AppHandle, shortcut: &Shortcut, event: Sh
                                             // Notification
                                             let notif_settings = settings.notifications.clone();
                                             if notif_settings.data_sent {
-                                                send_notification(app_handle, "Clipboard Sent", "Manual broadcast successful.", false);
+                                                send_notification(app_handle, "Clipboard Sent", "Manual broadcast successful.", false, Some("clipboard_status"));
                                             }
                                         }
                                     }
@@ -2396,11 +2400,11 @@ fn handle_shortcut(app_handle: &tauri::AppHandle, shortcut: &Shortcut, event: Sh
                         tracing::error!("Failed to write pending clipboard to system: {}", e);
                     } else {
                         tracing::info!("Confirmed pending clipboard content via shortcut.");
-                        send_notification(app_handle, "Clipboard Received", "Pending content applied.", false);
+                        send_notification(app_handle, "Clipboard Received", "Pending content applied.", false, Some("clipboard_status"));
                     }
                 } else {
                     tracing::info!("No pending clipboard content to receive.");
-                     send_notification(app_handle, "Manual Receive", "No pending content.", false);
+                     send_notification(app_handle, "Manual Receive", "No pending content.", false, Some("manual_action"));
                 }
            }
         }
