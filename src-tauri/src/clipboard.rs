@@ -452,7 +452,7 @@ fn broadcast_clipboard(
                                 "Clipboard Sent",
                                 body,
                                 false,
-                                Some("clipboard_status"),
+                                Some(2),
                             );
                         }
                     }
