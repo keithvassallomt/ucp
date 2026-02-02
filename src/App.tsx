@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { 
   Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2, LogOut, 
   Settings, Wifi, Lock, Unlock, AlertTriangle, Info, CheckCircle2,
@@ -1235,6 +1236,26 @@ function SettingsView({
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [autostart, setAutostart] = useState(false);
+
+  useEffect(() => {
+	isEnabled().then(setAutostart);
+  }, []);
+
+  const toggleAutostart = async () => {
+	try {
+		if (autostart) {
+			await disable();
+			setAutostart(false);
+		} else {
+			await enable();
+			setAutostart(true);
+		}
+	} catch (e) {
+		console.error("Failed to toggle autostart:", e);
+		alert("Failed to toggle autostart: " + e);
+	}
+  };
 
   // Load Settings
   useEffect(() => {
@@ -1359,6 +1380,29 @@ function SettingsView({
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto pb-4">
+      {/* General Settings */}
+      <Card className="p-4">
+        <SectionHeader
+           icon={<Settings className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+           title="General"
+           subtitle="Application preferences."
+        />
+        <div className="mt-4 px-1">
+             <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Start on Startup</div>
+                    <div className="text-xs text-zinc-500">Launch automatically when you log in.</div>
+                </div>
+                <button 
+                    onClick={toggleAutostart}
+                    className={clsx("relative h-6 w-11 rounded-full transition-colors", autostart ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+                >
+                    <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", autostart ? "translate-x-6" : "translate-x-1")} />
+                </button>
+             </div>
+        </div>
+      </Card>
+
       {/* Device Identity */}
       <Card className="p-4">
         <SectionHeader

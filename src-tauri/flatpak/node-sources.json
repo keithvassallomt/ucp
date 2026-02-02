@@ -692,6 +692,13 @@
     },
     {
         "type": "file",
+        "url": "https://registry.npmjs.org/@tauri-apps/plugin-autostart/-/plugin-autostart-2.5.1.tgz",
+        "sha512": "cd2ff1c7bcb3bde09ca2d900fbc4ea908da5cac986db0bd05efd87180544c484e69c57c701d8f56ab1ac6db7ecde8e8492d4477fa977e292717376061b69a0ef",
+        "dest-filename": "f1c7bcb3bde09ca2d900fbc4ea908da5cac986db0bd05efd87180544c484e69c57c701d8f56ab1ac6db7ecde8e8492d4477fa977e292717376061b69a0ef",
+        "dest": "flatpak-node/npm-cache/_cacache/content-v2/sha512/cd/2f"
+    },
+    {
+        "type": "file",
         "url": "https://registry.npmjs.org/@tauri-apps/plugin-opener/-/plugin-opener-2.5.2.tgz",
         "sha512": "7a2ff2451a02925587226c2909c0cadd584d5f1f905ccf7bf77690eb8631a6a545d010eeb88957859822024735e709cf55abfe21b9188660c922fe51df6e8c7b",
         "dest-filename": "f2451a02925587226c2909c0cadd584d5f1f905ccf7bf77690eb8631a6a545d010eeb88957859822024735e709cf55abfe21b9188660c922fe51df6e8c7b",
@@ -2381,6 +2388,12 @@
         "contents": "cfbbed1ad0de471de93f5021de6c87f46fb591d9\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/node-releases/-/node-releases-2.0.27.tgz\", \"integrity\": \"sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==\", \"time\": 0, \"size\": 5223, \"metadata\": {\"url\": \"https://registry.npmjs.org/node-releases/-/node-releases-2.0.27.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
         "dest-filename": "f7b0ebdc21c4cce43b7684759e7f065db7f787a33d320bd5fd161181914f",
         "dest": "flatpak-node/npm-cache/_cacache/index-v5/56/3c"
+    },
+    {
+        "type": "inline",
+        "contents": "cff9387591e86a4c728947edde9657696ae0fb41\t{\"key\": \"make-fetch-happen:request-cache:https://registry.npmjs.org/@tauri-apps/plugin-autostart/-/plugin-autostart-2.5.1.tgz\", \"integrity\": \"sha512-zS/xx7yzveCcotkA+8TqkI2lysmG2wvQXv2HGAVExITmnFfHAdj1arGsbbfs3o6EktRHf6l34pJxc3YGG2mg7w==\", \"time\": 0, \"size\": 2367, \"metadata\": {\"url\": \"https://registry.npmjs.org/@tauri-apps/plugin-autostart/-/plugin-autostart-2.5.1.tgz\", \"reqHeaders\": {}, \"resHeaders\": {}}}",
+        "dest-filename": "9b76948cce2e7d8b67fe59a4e695fd921e88d4f6dcc9e78e7d932438c48c",
+        "dest": "flatpak-node/npm-cache/_cacache/index-v5/a6/a0"
     },
     {
         "type": "inline",

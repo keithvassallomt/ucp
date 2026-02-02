@@ -9,6 +9,9 @@
     "notification:default",
     "clipboard:read-all",
     "clipboard:write-all",
-    "clipboard:monitor-all"
+    "clipboard:monitor-all",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }
