@@ -302,7 +302,7 @@ pub fn update_tray_menu(app: &AppHandle) {
             #[cfg(not(target_os = "linux"))]
             {
                 if let Some(check_item) = item.as_check_menuitem() {
-                    let _ = check_item.set_checked(settings.auto_receive);
+                    let _ = check_item.set_checked(settings.auto_send);
                 }
             }
         }
@@ -321,7 +321,7 @@ pub fn update_tray_menu(app: &AppHandle) {
             }
             #[cfg(not(target_os = "linux"))]
             {
-                if let Some(check_item) = item.as_check_menu_item() {
+                if let Some(check_item) = item.as_check_menuitem() {
                     let _ = check_item.set_checked(settings.auto_receive);
                 }
             }
