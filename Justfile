@@ -30,6 +30,12 @@ flatpak-flathub:
 run-flatpak:
     flatpak run com.keithvassallo.clustercut
 
+# Export the installed Flatpak to a single bundle file
+flatpak-bundle:
+    @echo "Exporting bundle from user repo..."
+    flatpak build-bundle ~/.local/share/flatpak/repo clustercut.flatpak com.keithvassallo.clustercut
+    @echo "Done: clustercut.flatpak"
+
 # Clean all build artifacts
 clean:
     rm -rf src-tauri/target
@@ -44,6 +50,7 @@ setup-flatpak:
     git clone https://github.com/flathub/shared-modules.git src-tauri/flatpak/shared-modules 2>/dev/null || echo "shared-modules already exists"
     @echo "Copying necessary patches..."
     # Ensure patches are extracted from shared-modules if not present
+    
 # Build the GNOME Extension ZIP
 extension-zip:
     @echo "Building GNOME Extension ZIP..."

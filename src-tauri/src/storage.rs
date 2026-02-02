@@ -308,6 +308,8 @@ pub struct AppSettings {
     pub enable_file_transfer: bool,
     pub max_auto_download_size: u64, // In bytes
     pub notify_large_files: bool,
+    #[serde(default)]
+    pub ignore_extension_missing: bool,
 }
 
 impl Default for AppSettings {
@@ -323,6 +325,7 @@ impl Default for AppSettings {
             enable_file_transfer: true,
             max_auto_download_size: 50 * 1024 * 1024, // 50 MB
             notify_large_files: true,
+            ignore_extension_missing: false,
         }
     }
 }

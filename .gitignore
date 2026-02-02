@@ -31,3 +31,6 @@ src-tauri/flatpak/shared-modules/
 
 # Extension build
 clustercut-extension.zip
+
+# Local Flatpak bundle
+clustercut.flatpak

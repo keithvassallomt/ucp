@@ -1302,11 +1302,15 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_local_ip,
             get_peers,
+
             add_manual_peer,
             start_pairing,
             delete_peer,
             leave_network,
             get_network_name,
+            request_file,
+            delete_history_item,
+            check_gnome_extension_status,
             get_network_pin,
             get_device_id,
             get_hostname,
@@ -1315,10 +1319,8 @@ pub fn run() {
             set_network_identity,
             regenerate_network_identity,
             send_clipboard,
-            delete_history_item,
             set_local_clipboard,
             confirm_pending_clipboard,
-            request_file,
         ])
         .on_window_event(|window, event| {
             match event {
@@ -2409,4 +2411,28 @@ fn handle_shortcut(app_handle: &tauri::AppHandle, shortcut: &Shortcut, event: Sh
            }
         }
     }
+}
+#[derive(serde::Serialize)]
+struct ExtensionStatus {
+    is_gnome: bool,
+    is_installed: bool,
+}
+
+#[tauri::command]
+fn check_gnome_extension_status() -> ExtensionStatus {
+    let xdg_current_desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    let is_gnome = xdg_current_desktop.contains("GNOME");
+
+    if !is_gnome {
+        return ExtensionStatus { is_gnome: false, is_installed: false };
+    }
+
+    // Check specific paths
+    let home = std::env::var("HOME").unwrap_or_default();
+    let local_path = format!("{}/.local/share/gnome-shell/extensions/clustercut@keithvassallo.com", home);
+    let system_path = "/usr/share/gnome-shell/extensions/clustercut@keithvassallo.com";
+
+    let is_installed = std::path::Path::new(&local_path).exists() || std::path::Path::new(system_path).exists();
+
+    ExtensionStatus { is_gnome: true, is_installed }
 }

@@ -5,7 +5,7 @@ import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { 
   Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2, LogOut, 
   Settings, Wifi, Lock, Unlock, AlertTriangle, Info, CheckCircle2,
-  ChevronDown, ChevronRight, ArrowUp, ArrowDown, Send, Download
+  ChevronDown, ChevronRight, ArrowUp, ArrowDown, Send, Download, Puzzle
 } from "lucide-react";
 import clsx from "clsx";
 import { ShortcutRecorder } from "./components/ShortcutRecorder";
@@ -80,6 +80,7 @@ interface AppSettings {
   enable_file_transfer: boolean;
   max_auto_download_size: number;
   notify_large_files: boolean;
+  ignore_extension_missing: boolean;
 }
 
 /* --- Helper Components (from Design) --- */
@@ -292,6 +293,9 @@ export default function App() {
   
   const [clipboardHistory, setClipboardHistory] = useState<HistoryItem[]>([]);
   const [activeView, setActiveView] = useState<View>("devices");
+  const [showExtensionDialog, setShowExtensionDialog] = useState(false);
+
+
   const [myNetworkName, setMyNetworkName] = useState("Loading...");
   const [myHostname, setMyHostname] = useState("Loading...");
   const [networkPin, setNetworkPin] = useState("...");
@@ -359,11 +363,45 @@ export default function App() {
       peersRef.current = peers;
   }, [peers]);
 
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
   /* Data Fetching */
   const fetchSettings = () => {
       invoke<AppSettings>("get_settings").then(s => {
+          setSettings(s);
           setIsAutoSend(s.auto_send);
       });
+  };
+
+  // GNOME Extension Check
+  useEffect(() => {
+      if (settings?.ignore_extension_missing === false) {
+           invoke<{is_gnome: boolean, is_installed: boolean}>('check_gnome_extension_status')
+           .then(status => {
+               if (status.is_gnome && !status.is_installed) {
+                   setShowExtensionDialog(true);
+               }
+           })
+           .catch(e => console.error("Failed to check extension status:", e));
+      }
+  }, [settings]);
+
+  const handleInstallExtension = () => {
+       invoke('open_url', { url: "https://extensions.gnome.org" }).catch(() => {
+            invoke('opener', {url: "https://extensions.gnome.org"}).catch(() => {
+                 window.open("https://extensions.gnome.org", "_blank");
+            });
+       });
+       setShowExtensionDialog(false);
+  };
+  
+  const handleIgnoreExtension = async () => {
+      if (settings) {
+          const newSettings = { ...settings, ignore_extension_missing: true };
+          await invoke("save_settings", { settings: newSettings });
+          setSettings(newSettings); 
+          setShowExtensionDialog(false);
+      }
   };
 
 
@@ -629,6 +667,58 @@ export default function App() {
     <div className={clsx(rootThemeClass, "min-h-screen w-full bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.10),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(99,102,241,0.10),transparent_50%)] dark:bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.12),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(244,63,94,0.10),transparent_50%)] md:h-screen md:overflow-hidden")}>
       
       <Dialog {...dialog} />
+      
+      {/* GNOME Extension Dialog */}
+      {showExtensionDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <Card className="max-w-md w-full p-6 space-y-4 shadow-2xl border-indigo-500/20">
+            <div className="flex items-center gap-3 text-indigo-500">
+               <div className="p-3 rounded-full bg-indigo-500/10">
+                 <Puzzle className="w-8 h-8" />
+               </div>
+               <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Enable GNOME Integration</h2>
+            </div>
+            
+            <p className="text-slate-600 dark:text-zinc-400">
+              It looks like you are running GNOME, but the <strong>ClusterCut Extension</strong> is not installed.
+            </p>
+            <p className="text-slate-600 dark:text-zinc-400 text-sm">
+              Installing the extension allows you to control ClusterCut directly from the Quick Settings menu.
+            </p>
+
+            <div className="flex items-center space-x-2 pt-2">
+                 <input 
+                    type="checkbox" 
+                    id="dontAsk" 
+                    className="w-4 h-4 rounded border-slate-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 bg-transparent"
+                    onChange={(e) => {
+                        if (e.target.checked) {
+                            handleIgnoreExtension();
+                        }
+                    }}
+                 />
+                 <label htmlFor="dontAsk" className="text-sm text-slate-500 dark:text-zinc-500 select-none cursor-pointer">
+                    Don't ask me again
+                 </label>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button 
+                variant="default" 
+                onClick={() => setShowExtensionDialog(false)}
+              >
+                No Thanks
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={handleInstallExtension}
+              >
+                Install Extension
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 md:h-full md:min-h-0 md:px-6">
         {/* Custom titlebar drag region */}
