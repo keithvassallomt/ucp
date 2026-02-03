@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { version } from "../package.json";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
@@ -1750,10 +1751,13 @@ function SettingsView({
       </Card>
       
       {/* Footer Status */}
-      <div className="flex justify-center pt-2">
+      <div className="flex flex-col items-center justify-center gap-2 pt-2 pb-4 opacity-50">
            <span className={clsx("text-[10px] font-medium transition-opacity", saving ? "opacity-100 text-zinc-500" : "opacity-0 duration-1000")}>
                Saving changes...
            </span>
+           <div className="text-[10px] text-zinc-400">
+               ClusterCut v{version} ({__COMMIT_HASH__})
+           </div>
       </div>
     </div>
   );
