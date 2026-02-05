@@ -29,6 +29,63 @@ struct Args {
     log_level: String,
 }
 
+#[tauri::command]
+async fn configure_autostart(app_handle: tauri::AppHandle, enable: bool) -> Result<bool, String> {
+    // Check if running in Flatpak
+    if cfg!(target_os = "linux") && std::env::var("FLATPAK_ID").is_ok() {
+        // Explicitly ignore app_handle to silence warnings
+        let _ = app_handle;
+
+        let id = std::env::var("FLATPAK_ID").unwrap();
+        
+        let base_config = std::env::var("XDG_CONFIG_HOME").ok()
+            .map(PathBuf::from)
+            .or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config")))
+            .ok_or("Could not determine config directory")?;
+            
+        let autostart_dir = base_config.join("autostart");
+        let file_path = autostart_dir.join(format!("{}.desktop", id));
+
+        if enable {
+            if !autostart_dir.exists() {
+                std::fs::create_dir_all(&autostart_dir).map_err(|e| e.to_string())?;
+            }
+            
+            // X-Flatpak tag and Exec command are key
+            let content = format!(
+                "[Desktop Entry]\nType=Application\nName=ClusterCut\nComment=ClusterCut Clipboard Sync\nExec=flatpak run {}\nX-Flatpak={}\nTerminal=false\nCategories=Utility;\n",
+                id, id
+            );
+            std::fs::write(&file_path, content).map_err(|e| e.to_string())?;
+        } else {
+            if file_path.exists() {
+                std::fs::remove_file(&file_path).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(true) // Handled
+    } else {
+        Ok(false) // Not handled
+    }
+}
+
+#[tauri::command]
+async fn get_autostart_state(app_handle: tauri::AppHandle) -> Result<Option<bool>, String> {
+    if cfg!(target_os = "linux") && std::env::var("FLATPAK_ID").is_ok() {
+         let _ = app_handle;
+         let id = std::env::var("FLATPAK_ID").unwrap();
+         
+         let base_config = std::env::var("XDG_CONFIG_HOME").ok()
+            .map(PathBuf::from)
+            .or_else(|| std::env::var("HOME").ok().map(|h| PathBuf::from(h).join(".config")))
+            .ok_or("Could not determine config directory")?;
+
+        let file_path = base_config.join("autostart").join(format!("{}.desktop", id));
+        Ok(Some(file_path.exists()))
+    } else {
+        Ok(None)
+    }
+}
+
 fn init_logging() {
     // 1. Parse CLI Args (ignoring unknown args that Tauri might use)
     let args = match Args::try_parse() {
@@ -1464,6 +1521,8 @@ pub fn run() {
             confirm_pending_clipboard,
             exit_app,
             retry_connection,
+            configure_autostart,
+            get_autostart_state,
         ])
         .on_window_event(|window, event| {
             match event {

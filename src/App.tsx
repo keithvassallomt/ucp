@@ -1489,11 +1489,24 @@ function SettingsView({
   const [autostart, setAutostart] = useState(false);
 
   useEffect(() => {
-	isEnabled().then(setAutostart);
+	// Check if backend handles state (Flatpak) or native fallback
+    invoke<boolean | null>("get_autostart_state").then(res => {
+        if (res !== null) {
+            setAutostart(res);
+        } else {
+            isEnabled().then(setAutostart);
+        }
+    });
   }, []);
 
   const toggleAutostart = async () => {
 	try {
+        const handled = await invoke<boolean>("configure_autostart", { enable: !autostart });
+        if (handled) {
+            setAutostart(!autostart);
+            return;
+        }
+
 		if (autostart) {
 			await disable();
 			setAutostart(false);
