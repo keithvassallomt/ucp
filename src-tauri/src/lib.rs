@@ -382,6 +382,16 @@ fn get_peers(state: tauri::State<AppState>) -> std::collections::HashMap<String,
 }
 
 #[tauri::command]
+fn get_known_peers(state: tauri::State<AppState>) -> std::collections::HashMap<String, Peer> {
+    state.known_peers.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn log_frontend(message: String) {
+    tracing::info!("[Frontend] {}", message);
+}
+
+#[tauri::command]
 fn get_local_ip() -> String {
     local_ip_address::local_ip()
         .map(|ip| ip.to_string())
@@ -514,6 +524,7 @@ async fn probe_ip(
                          };
                          peers.insert(id.clone(), peer.clone());
                          let _ = app_handle.emit("peer-update", &peer);
+                         save_known_peers(&app_handle, &peers); // PERSIST manual placeholder
                          
                           let notifications = state.settings.lock().unwrap().notifications.clone();
                           if notifications.device_join {
@@ -863,6 +874,49 @@ async fn set_local_clipboard(app: tauri::AppHandle, text: String) -> Result<(), 
 }
 
 #[tauri::command]
+async fn exit_app(app_handle: tauri::AppHandle) {
+    app_handle.exit(0);
+}
+
+#[tauri::command]
+async fn retry_connection(
+    state: tauri::State<'_, AppState>,
+    transport: tauri::State<'_, Transport>,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    // Clone inner values to own them for the async task
+    let state_owned = (*state).clone();
+    let transport_owned = (*transport).clone();
+    let app_handle_clone = app_handle.clone();
+    
+    // Re-run the startup probe logic
+    tauri::async_runtime::spawn(async move {
+         let known_peers = {
+             state_owned.known_peers.lock().unwrap().clone()
+         };
+         
+         if !known_peers.is_empty() {
+             tracing::info!("Retry Connection: Probing {} known peers...", known_peers.len());
+             for (_id, peer) in known_peers {
+                 let s = state_owned.clone();
+                 let t = transport_owned.clone();
+                 let a = app_handle_clone.clone();
+                 
+                 tauri::async_runtime::spawn(async move {
+                     probe_ip(peer.ip, peer.port, s, t, a).await;
+                 });
+             }
+         } else {
+             // If no known peers, maybe we should try scanning? 
+             // But for now, we only care about reconnecting to knowns.
+             tracing::warn!("Retry Connection: No known peers to probe.");
+         }
+    });
+    
+    Ok(())
+}
+
+#[tauri::command]
 async fn confirm_pending_clipboard(
     state: tauri::State<'_, AppState>,
     app_handle: tauri::AppHandle,
@@ -992,10 +1046,72 @@ pub fn run() {
                 *state.network_pin.lock().unwrap() = network_pin.clone();
                 tracing::info!("Network PIN: {}", network_pin);
 
-                // 3d. Load Settings
+                // 3e. Load Settings
                 let settings = load_settings(app_handle);
                 *state.settings.lock().unwrap() = settings;
                 tracing::info!("Loaded Settings");
+
+                // --- NEW: Startup Reconnection Probe ---
+                // We want to try reconnecting to manual peers or trusted peers.
+                let state_owned = (*state).clone();
+                let transport_clone = transport.clone();
+                let app_handle_clone = app_handle.clone();
+                
+                tauri::async_runtime::spawn(async move {
+                     // Wait a moment for transport/discovery to settle
+                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                     
+                     // Retroactive Fix: If a peer is on a different subnet, mark it as manual.
+                     let mut known_peers = state_owned.known_peers.lock().unwrap();
+                     let local_ip_obj = local_ip_address::local_ip().unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)));
+                     let mut changed = false;
+                     
+                     for peer in known_peers.values_mut() {
+                         if !peer.is_manual {
+                              // If peer.ip is remote relative to local_ip_obj
+                              let is_remote = match (local_ip_obj, peer.ip) {
+                                 (std::net::IpAddr::V4(l), std::net::IpAddr::V4(r)) => {
+                                     // Compare first 3 octets
+                                     l.octets()[0..3] != r.octets()[0..3]
+                                 },
+                                 (std::net::IpAddr::V6(l), std::net::IpAddr::V6(r)) => {
+                                      // Compare first 4 segments
+                                      l.segments()[0..4] != r.segments()[0..4]
+                                 },
+                                 _ => true,
+                             };
+                             
+                             if is_remote && !peer.ip.is_loopback() {
+                                 tracing::info!("Startup: Auto-correcting peer {} to is_manual=true (Remote IP: {})", peer.id, peer.ip);
+                                 peer.is_manual = true;
+                                 changed = true;
+                             }
+                         }
+                     }
+                     if changed {
+                         save_known_peers(&app_handle_clone, &known_peers);
+                     }
+                     
+                     // Clone to vector for iteration (drop lock)
+                     let peers_to_probe: Vec<(String, Peer)> = known_peers.clone().into_iter().collect();
+                     drop(known_peers);
+
+                     if !peers_to_probe.is_empty() {
+                         tracing::info!("Startup: Probing {} known peers for reconnection...", peers_to_probe.len());
+                         for (id, peer) in peers_to_probe {
+                             tracing::info!("Startup: Peer {} (Manual: {}) - {}", id, peer.is_manual, peer.ip);
+                             
+                             let s = state_owned.clone();
+                             let t = transport_clone.clone();
+                             let a = app_handle_clone.clone();
+                             
+                             tauri::async_runtime::spawn(async move {
+                                 // We use the last known IP/Port
+                                 probe_ip(peer.ip, peer.port, s, t, a).await;
+                             });
+                         }
+                     }
+                });
 
                 // 4. Register Discovery
                 let mut discovery = Discovery::new().expect("Failed to initialize discovery");
@@ -1338,12 +1454,16 @@ pub fn run() {
             get_device_id,
             get_hostname,
             get_settings,
+            get_known_peers,
+            log_frontend,
             save_settings,
             set_network_identity,
             regenerate_network_identity,
             send_clipboard,
             set_local_clipboard,
             confirm_pending_clipboard,
+            exit_app,
+            retry_connection,
         ])
         .on_window_event(|window, event| {
             match event {

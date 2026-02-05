@@ -6,12 +6,26 @@ import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { 
   Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2, LogOut, 
   Settings, Wifi, Lock, Unlock, AlertTriangle, Info, CheckCircle2,
-  ChevronDown, ChevronRight, ArrowUp, ArrowDown, Send, Download, Puzzle
+  ChevronDown, ChevronRight, ArrowUp, ArrowDown, Send, Download, Puzzle, Loader2
 } from "lucide-react";
 import clsx from "clsx";
 import { ShortcutRecorder } from "./components/ShortcutRecorder";
 
+// Helper for backend logging
+const logToBackend = (msg: string, ...args: any[]) => {
+    const formatted = [msg, ...args].map(a => 
+        typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
+    ).join(" ");
+    invoke("log_frontend", { message: formatted }).catch(_err => {
+        // Fallback if backend call fails, though user hates console.log, we need some safety.
+        // But we'll try to keep it silent if possible or just minimal.
+    });
+};
+
 /* --- Types --- */
+// ... (rest of imports)
+
+
 
 interface Peer {
   id: string;
@@ -205,9 +219,9 @@ function IconButton({
       onClick={onClick}
       className={clsx(
         "group relative flex h-10 w-10 items-center justify-center rounded-xl transition focus:outline-none focus:ring-2 focus:ring-emerald-500/40 no-drag",
-        active 
+        active
           ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
-          : danger 
+          : danger
             ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
             : "text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-50",
          variant === "default" && !active && !danger && "bg-zinc-900/5 dark:bg-white/5"
@@ -367,6 +381,69 @@ export default function App() {
   }, [peers]);
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  /* Connection Failure Logic */
+  const [isConnectionFailed, setIsConnectionFailed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [hasManualPeers, setHasManualPeers] = useState(false);
+
+  // Check for manual peers on startup
+  useEffect(() => {
+      invoke<Record<string, Peer>>("get_known_peers").then(map => {
+          logToBackend("Known Peers Raw:", map);
+          const hasManual = Object.values(map).some(p => p.is_manual);
+          logToBackend("Computed hasManual:", hasManual);
+          setHasManualPeers(hasManual);
+      }).catch(e => logToBackend("Error fetching known peers:", e));
+  }, [settings, retryCount]); // Re-check if settings change or we retry
+
+  useEffect(() => {
+    if (!settings) return;
+    
+    // Logic:
+    // 1. Provisioned Mode: Always check.
+    // 2. Auto Mode: Check ONLY if we have explicit "Manual" peers (which implies Remote/VPN).
+    const isProvisioned = settings.cluster_mode === "provisioned";
+    const shouldCheck = isProvisioned || hasManualPeers;
+
+    // Show connecting state if we are checking, have no peers, and haven't failed yet.
+    // We use a small delay to avoid flashing if connection is instant (though 0 peers usually implies waiting).
+    // Actually, usually immediate.
+    
+    logToBackend("Connection Check: Mode =", settings.cluster_mode, "HasManual =", hasManualPeers, "Should Check =", shouldCheck, "Peers =", peers.length);
+
+    if (shouldCheck) {
+        if (peers.length > 0) {
+            logToBackend("Connection Check: Peers found. Clearing failure state.");
+            setIsConnectionFailed(false);
+            return;
+        }
+        
+        logToBackend("Connection Check: No peers. Starting timer...");
+        const timer = setTimeout(() => {
+             setIsConnectionFailed(true);
+             logToBackend("Connection Check: Timeout reached. Showing modal.");
+        }, 15000); // 15s
+
+        return () => clearTimeout(timer);
+    } else {
+        setIsConnectionFailed(false);
+    }
+  }, [settings, peers.length, retryCount, hasManualPeers]);
+
+  const handleRetryConnection = async () => {
+      setIsConnectionFailed(false);
+      setRetryCount(c => c + 1);
+      await invoke("retry_connection");
+  };
+
+  const handleConnectionFailureLeave = async () => {
+      setIsConnectionFailed(false);
+      try {
+          await invoke("leave_network");
+      } catch(e) { logToBackend("Error leaving network:", e); }
+  };
+
 
   /* Data Fetching */
   const fetchSettings = () => {
@@ -701,6 +778,31 @@ export default function App() {
       
       <Dialog {...dialog} />
       
+      {/* Connection Failure Modal */}
+      {isConnectionFailed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-zinc-900/10 dark:bg-zinc-900 dark:ring-white/10">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Connection Failed</h3>
+              <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                Could not connect to the remote cluster. What would you like to do?
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 bg-zinc-50 px-6 py-4 dark:bg-zinc-800/50">
+              <Button variant="primary" onClick={handleRetryConnection}>
+                Retry Connection
+              </Button>
+              <Button variant="danger" onClick={handleConnectionFailureLeave}>
+                Leave Cluster
+              </Button>
+              <Button variant="default" onClick={() => invoke("exit_app")}>
+                Exit Application
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* GNOME Extension Dialog */}
       {showExtensionDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -971,6 +1073,14 @@ export default function App() {
           </div>
         </Modal>
       </div>
+
+      {/* Reconnecting Overlay */}
+      {settings && (settings.cluster_mode === "provisioned" || hasManualPeers) && peers.length === 0 && !isConnectionFailed && (
+          <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm dark:bg-zinc-950/80">
+              <Loader2 className="h-12 w-12 animate-spin text-indigo-500 mb-4" />
+              <div className="text-xl font-medium text-zinc-900 dark:text-zinc-50">Connecting to remote cluster...</div>
+          </div>
+      )}
     </div>
   );
 }
@@ -1165,6 +1275,7 @@ function DevicesView({
           </div>
         </Card>
       </div>
+
     </div>
   );
 }
@@ -1786,6 +1897,8 @@ function SettingsView({
                ClusterCut v{version} ({__COMMIT_HASH__})
            </div>
       </div>
+
+      
     </div>
   );
 }
