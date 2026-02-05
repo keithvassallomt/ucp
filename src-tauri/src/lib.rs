@@ -285,6 +285,7 @@ fn save_settings(
     app_handle: tauri::AppHandle,
 ) {
     *state.settings.lock().unwrap() = settings.clone();
+    tracing::info!("Saving Settings: auto_send={}, auto_receive={}", settings.auto_send, settings.auto_receive);
     crate::storage::save_settings(&app_handle, &settings);
     let _ = app_handle.emit("settings-changed", settings.clone());
     

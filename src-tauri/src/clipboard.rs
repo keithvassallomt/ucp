@@ -403,15 +403,16 @@ fn broadcast_clipboard(
     transport: &Transport,
     payload_obj: ClipboardPayload,
 ) {
-    // Emit Local Event
-    let _ = app_handle.emit("clipboard-change", &payload_obj);
-
     // Check Auto-Send
     let auto_send = { state.settings.lock().unwrap().auto_send };
     if !auto_send {
-        tracing::debug!("Auto-send disabled. Skipping broadcast.");
+        tracing::debug!("Auto-send disabled. Emitting monitor update only.");
+        let _ = app_handle.emit("clipboard-monitor-update", &payload_obj);
         return;
     }
+
+    // Emit Local Event (Committed to History)
+    let _ = app_handle.emit("clipboard-change", &payload_obj);
 
     // Encrypt
     let payload_bytes = match serde_json::to_vec(&payload_obj) {

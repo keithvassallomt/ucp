@@ -338,7 +338,9 @@ export default function App() {
   const [lastReceivedClipboard, setLastReceivedClipboard] = useState(""); // Last received from cluster
 
   // We need to know if Auto-Send is ON/OFF to decide if we show "Pending Send"
-  const [isAutoSend, setIsAutoSend] = useState(true); // Default assumption, updated by Settings
+  const [isAutoSend, setIsAutoSend] = useState(true); // Default assumption, updated bySettings
+  const isAutoSendRef = useRef(isAutoSend);
+  useEffect(() => { isAutoSendRef.current = isAutoSend; }, [isAutoSend]);
   
   // Rule 2: If local matches last received, not a candidate for sending.
   const hasPendingSend = !isAutoSend 
@@ -452,6 +454,30 @@ export default function App() {
       });
     });
 
+    // Listen for Monitor Updates (When Auto-Send is OFF)
+    const unlistenMonitor = listen<any>("clipboard-monitor-update", (event) => {
+        console.log("Monitor Update (Auto-Send OFF):", event.payload);
+        const p = event.payload;
+        // This event ONLY comes from local backend monitoring
+        
+        const newItem: HistoryItem = {
+            id: p.id,
+            origin: "local",
+            device: "Me", // It's always me for monitor updates
+            sender_id: p.sender_id,
+            ts: p.timestamp,
+            text: p.text || "",
+            files: p.files
+        };
+
+        // Update Local State but NOT 'lastSentClipboard'
+        if (newItem.text) {
+             setLocalClipboard(newItem.text);
+             // Do NOT set lastSentClipboard here, because we haven't sent it yet!
+             // This discrepancy (local > lastSent) will trigger the FAB.
+        }
+    });
+
     // Listen for Clipboard Changes
     const unlistenClipboard = listen<any>("clipboard-change", (event) => {
       console.log("Clipboard Changed Event:", event.payload);
@@ -474,9 +500,8 @@ export default function App() {
       if (isLocal) {
            // If it has text, update local view
            if (newItem.text) setLocalClipboard(newItem.text);
-           if (isAutoSend) {
-               if (newItem.text) setLastSentClipboard(newItem.text);
-           }
+           // If local change event -> it is committed (Auto or Manual).
+           if (newItem.text) setLastSentClipboard(newItem.text);
       } else {
            // Remote sender
            if (newItem.text) {
@@ -537,6 +562,8 @@ export default function App() {
     return () => {
       unlistenPeer.then((f) => f());
       unlistenClipboard.then((f) => f());
+      unlistenMonitor.then((f) => f());
+
       unlistenPending.then((f) => f());
       unlistenRemove.then((f) => f());
       unlistenReset.then((f) => f());
