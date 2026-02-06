@@ -2820,3 +2820,8 @@ async fn check_gnome_extension_status() -> ExtensionStatus {
 
     ExtensionStatus { is_gnome: true, is_installed }
 }
+
+#[tauri::command]
+fn get_launch_args() -> Vec<String> {
+    std::env::args().collect()
+}
