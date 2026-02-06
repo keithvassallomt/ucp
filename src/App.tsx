@@ -1304,11 +1304,12 @@ function DevicesView({
 function HistoryView({ items }: { items: HistoryItem[] }) {
   const [myHostname, setMyHostname] = useState<string>("");
   const [progress, setProgress] = useState<Record<string, { transferred: number, total: number }>>({});
+  const [downloadedFiles, setDownloadedFiles] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
       invoke<string>("get_hostname").then(setMyHostname);
       
-      const unlistenPromise = listen<{id: string, fileName: string, total: number, transferred: number}>("file-progress", (e) => {
+      const unlistenProgress = listen<{id: string, fileName: string, total: number, transferred: number}>("file-progress", (e) => {
          // Update state
          setProgress(p => ({ 
              ...p, 
@@ -1327,7 +1328,18 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
          }
       });
 
-      return () => { unlistenPromise.then(u => u()); };
+      const unlistenReceived = listen<{id: string, path: string}>("file-received", (e) => {
+           setDownloadedFiles(prev => {
+               const existing = prev[e.payload.id] || [];
+               if (existing.includes(e.payload.path)) return prev;
+               return { ...prev, [e.payload.id]: [...existing, e.payload.path] };
+           });
+      });
+
+      return () => { 
+          unlistenProgress.then(u => u()); 
+          unlistenReceived.then(u => u());
+      };
   }, []);
 
   const handleSend = async (text: string) => {
@@ -1348,21 +1360,21 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
      }
   };
 
+  const handleLocalCopyFiles = async (paths: string[]) => {
+      try {
+          await invoke("set_local_clipboard_files", { paths });
+      } catch (e) {
+          console.error("Failed to set local clipboard files:", e);
+          alert("Failed to set clipboard: " + e);
+      }
+  };
+
   const handleDelete = async (id: string) => {
       try {
-           // Delete locally first for instant feedback? 
-           // Or wait for event loopback? 
-           // Better wait or optimistic?
-           // The event `history-delete` is broadcasted. locally we might need to manual delete if backend doesn't loopback history-delete to self? 
-           // Messages are usually not looped back to self unless logic handles it.
-           // lib.rs `HistoryDelete` handler emits event. But `delete_history_item` ONLY sends to peers. 
-           // So we must manually update local state or emit local event in backend.
-           // BE logic: `delete_history_item` sends to peers. It does NOT emit local event.
-           // So we should delete from UI list directly here too.
            await invoke("delete_history_item", { id });
            // Optimistic Update is fine
       } catch (e) {
-          console.error("Failed to delete:", e);
+           console.error("Failed to delete:", e);
       }
   };
 
@@ -1447,25 +1459,33 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
                   )}
                 </div>
 
-                <div className="flex items-center justify-end gap-2">
-                  <IconButton label="Copy to Clipboard" onClick={() => handleLocalCopy(it.text)}>
-                      <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
-                  </IconButton>
+                  <div className="flex items-center justify-end gap-2">
+                    <IconButton label="Copy to Clipboard" onClick={() => handleLocalCopy(it.text)}>
+                        <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+                    </IconButton>
 
-                  {!isMe && it.files && it.files.length > 0 && it.sender_id && (
-                      <IconButton label="Download All" onClick={() => handleDownloadAll(it.id, it.files!, it.sender_id!)}>
-                          <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                      </IconButton>
-                  )}
-                  
-                  <IconButton label="Send to Cluster" onClick={() => handleSend(it.text)}>
-                      <Send className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  </IconButton>
+                    {!isMe && it.files && it.files.length > 0 && it.sender_id && (
+                        <>
+                            {downloadedFiles[it.id] && downloadedFiles[it.id].length >= it.files.length ? (
+                                <IconButton label="Copy Files" onClick={() => handleLocalCopyFiles(downloadedFiles[it.id])}>
+                                    <Copy className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                </IconButton>
+                            ) : (
+                                <IconButton label="Download All" onClick={() => handleDownloadAll(it.id, it.files!, it.sender_id!)}>
+                                    <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                </IconButton>
+                            )}
+                        </>
+                    )}
+                    
+                    <IconButton label="Send to Cluster" onClick={() => handleSend(it.text)}>
+                        <Send className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    </IconButton>
 
-                  <IconButton label="Delete Everywhere" onClick={() => handleDelete(it.id)}>
-                      <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-                  </IconButton>
-                </div>
+                    <IconButton label="Delete Everywhere" onClick={() => handleDelete(it.id)}>
+                        <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                    </IconButton>
+                  </div>
               </div>
             </div>
           );})}

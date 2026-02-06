@@ -1540,12 +1540,26 @@ pub fn run() {
             regenerate_network_identity,
             send_clipboard,
             set_local_clipboard,
+            set_local_clipboard_files,
             confirm_pending_clipboard,
             exit_app,
             retry_connection,
             configure_autostart,
             get_autostart_state,
         ])
+        .setup(|app| {
+             // Clear Cache on Startup
+             clear_cache(app.handle());
+             
+             // Initialize Tray
+             // ...
+             #[cfg(desktop)]
+             {
+                let handle = app.handle();
+                crate::tray::create_tray(handle)?;
+             }
+             Ok(())
+        })
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -1586,6 +1600,10 @@ pub fn run() {
             }
             tauri::RunEvent::Exit => {
                 tracing::info!("App exiting, signaling shutdown to background threads...");
+                
+                // Clear Cache on Exit
+                clear_cache(app_handle);
+                
                 let state = app_handle.state::<AppState>();
 
                 // Signal shutdown to background threads FIRST
@@ -1635,6 +1653,30 @@ pub fn run() {
             _ => {}
         }
     });
+}
+
+
+fn clear_cache(app: &tauri::AppHandle) {
+    if let Ok(cache_dir) = app.path().app_cache_dir() {
+        if func_exists(&cache_dir) {
+            tracing::info!("Clearing cache directory: {:?}", cache_dir);
+            if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
+                tracing::error!("Failed to clear cache: {}", e);
+            }
+            // Re-create it immediately so it exists for use
+            let _ = std::fs::create_dir_all(&cache_dir);
+        }
+    }
+    
+    fn func_exists(path: &std::path::Path) -> bool {
+        path.exists()
+    }
+}
+
+#[tauri::command]
+async fn set_local_clipboard_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
+    clipboard::set_clipboard_paths(&app, paths);
+    Ok(())
 }
 
 async fn handle_incoming_file_stream(recv: quinn::RecvStream, addr: std::net::SocketAddr, state: AppState, app: tauri::AppHandle) {
@@ -1788,7 +1830,14 @@ async fn handle_incoming_file_stream(recv: quinn::RecvStream, addr: std::net::So
      }));
     
      // Emit received event
-     let _ = app.emit("file-received", &header);
+     let _ = app.emit("file-received", serde_json::json!({
+         "id": header.id,
+         "file_name": header.file_name,
+         "file_size": header.file_size,
+         "file_index": header.file_index,
+         "auth_token": header.auth_token, // (optional, maybe redact?)
+         "path": file_path.to_string_lossy()
+     }));
      
      // Notification
      let settings = state.settings.lock().unwrap();
