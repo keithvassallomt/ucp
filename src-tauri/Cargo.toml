@@ -62,5 +62,6 @@ user-notify = { git = "https://github.com/Simon-Laux/user-notify" }
 windows = { version = "0.58.0", features = [
     "Data_Xml_Dom",
     "UI_Notifications", 
-    "UI_Notifications_Management"
+    "UI_Notifications_Management",
+    "Foundation"
 ] }

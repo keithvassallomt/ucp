@@ -242,6 +242,7 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
         use windows::UI::Notifications::{ToastNotificationManager, ToastNotification};
         use windows::Data::Xml::Dom::XmlDocument;
         use windows::core::HSTRING;
+        use windows::core::Interface;
 
         let aumid = "com.keithvassallo.clustercut";
         
@@ -250,6 +251,21 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
         // But for consistency and "click to show app", the basic XML structure is good.
         // We'll mimic the simpler notification but use 'activationType="protocol"' to wake app.
         
+        // Dynamic Actions
+        let mut actions_xml = format!(r#"<action content="Open" arguments="clustercut://action/show?view={}" activationType="protocol"/>"#, target_view);
+
+        if let NotificationPayload::DownloadAvailable { msg_id, file_count, peer_id } = &payload {
+             // Encode params if needed, but for now simple format
+             let download_args = format!("clustercut://action/download?msg_id={}&peer_id={}&file_count={}", msg_id, peer_id, file_count);
+             // Escape XML chars in URL? & in XML is &amp;
+             // Rust format! doesn't auto-escape for XML. 
+             // We need to escape '&' to '&amp;' in the URL when putting it into XML attribute.
+             let download_args_escaped = download_args.replace("&", "&amp;");
+             
+             let download_action = format!(r#"<action content="Download" arguments="{}" activationType="protocol"/>"#, download_args_escaped);
+             actions_xml.push_str(&download_action);
+        }
+
         let xml = format!(r#"
 <toast activationType="protocol" launch="clustercut://action/show?view={}">
     <visual>
@@ -258,12 +274,42 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
             <text>{}</text>
         </binding>
     </visual>
+    <actions>
+        {}
+    </actions>
 </toast>
-"#, target_view, title, body);
+"#, target_view, title, body, actions_xml);
 
         if let Ok(doc) = XmlDocument::new() {
              if let Ok(_) = doc.LoadXml(&HSTRING::from(&xml)) {
                  if let Ok(toast) = ToastNotification::CreateToastNotification(&doc) {
+                     // Set Expiration Time (5 seconds from now)
+                     let now = std::time::SystemTime::now();
+                     let unix_epoch = std::time::UNIX_EPOCH;
+                     if let Ok(duration) = now.duration_since(unix_epoch) {
+                         // Windows Epoch (1601-01-01) is 11,644,473,600 seconds before Unix Epoch
+                         // Ticks are 100ns intervals
+                         let unix_secs = duration.as_secs();
+                         let unix_nanos = duration.subsec_nanos() as u64;
+                         
+                         let windows_ticks = (unix_secs + 11_644_473_600) * 10_000_000 + (unix_nanos / 100);
+                         
+                         // Add 5 seconds
+                         let expire_ticks = windows_ticks + (5 * 10_000_000);
+                         
+                         let expiry = windows::Foundation::DateTime { UniversalTime: expire_ticks as i64 };
+                         
+                         // Fix for E0277: SetExpirationTime requires IReference<DateTime>
+                         // We use PropertyValue to box the DateTime into an IInspectable/IReference
+                         if let Ok(inspectable) = windows::Foundation::PropertyValue::CreateDateTime(expiry) {
+                             if let Ok(expiry_ref) = inspectable.cast::<windows::Foundation::IReference<windows::Foundation::DateTime>>() {
+                                  if let Err(e) = toast.SetExpirationTime(&expiry_ref) {
+                                      tracing::warn!("Failed to set notification expiration: {}", e);
+                                  }
+                             }
+                         }
+                     }
+
                      if let Ok(notifier) = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(aumid)) {
                          let _ = notifier.Show(&toast);
                      }

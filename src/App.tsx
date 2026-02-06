@@ -413,13 +413,44 @@ export default function App() {
         console.log("Found Deep Link URL:", urlStr);
         logToBackend("Deep Link Detected:", urlStr);
         if (urlStr.includes("action/show") || urlStr.includes("action/download")) {
-          console.log("Action matched! Switching to history.");
-          logToBackend("Action matched, switching to history.");
-          setActiveView("history");
-          // We don't need handleNotificationClick() here if it just does show/focus/view, 
-          // because if we are running cold or handling via single-instance, we are likely already focused or about to be.
-          // But calling it ensures we unminimize if needed.
-          handleNotificationClick();
+          console.log("Action matched! Parsing view/action from URL...");
+          logToBackend("Action matched, checking for view/action param.");
+
+          let targetView = "history";
+          try {
+            const parsed = new URL(urlStr);
+
+            // 1. Download Action
+            if (urlStr.includes("action/download")) {
+              const msgId = parsed.searchParams.get("msg_id");
+              const peerId = parsed.searchParams.get("peer_id");
+              const countStr = parsed.searchParams.get("file_count");
+
+              if (msgId && peerId && countStr) {
+                const count = parseInt(countStr);
+                logToBackend(`Auto-download triggered via Notification: ${count} files.`);
+
+                // Trigger downloads
+                for (let i = 0; i < count; i++) {
+                  invoke("request_file", { fileId: msgId, fileIndex: i, peerId: peerId }).catch(e => {
+                    console.error("Failed to auto-download:", e);
+                    logToBackend("Failed to auto-download:", e);
+                  });
+                }
+              }
+              targetView = "history";
+            }
+            // 2. Show Action
+            else {
+              const v = parsed.searchParams.get("view");
+              if (v) targetView = v;
+            }
+          } catch (e) {
+            console.error("Failed to parse URL:", e);
+          }
+
+          setActiveView(targetView as any);
+          handleNotificationClick(targetView);
         } else {
           // Generic open
           setActiveView("history"); // Default behavior for deep link? or Devices?
