@@ -234,6 +234,9 @@ use transport::Transport;
 // use tauri_plugin_notification::NotificationExt;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
+// Track last notification time for macOS cleaner
+static LAST_NOTIFICATION_TIME: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
 // Helper to broadcast a new peer to all known peers (Gossip)
 pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str, increment_badge: bool, _id: Option<i32>, target_view: &str, payload: NotificationPayload) {
     // 1. Windows (Native windows-rs with XML Actions)
@@ -322,6 +325,13 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
     #[cfg(target_os = "macos")]
     {
         tracing::info!("[Notification] macOS detected. Using user-notify...");
+
+        // Update last notification time
+        {
+            let mut lock = LAST_NOTIFICATION_TIME.lock().unwrap();
+            *lock = Some(std::time::Instant::now());
+        }
+
         let title = title.to_string();
         let body = body.to_string();
         let view = target_view.to_string();
@@ -381,14 +391,60 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
             });
             
             // Block until Main Thread creates and registers the manager
-            match rx.recv() {
+            let manager = match rx.recv() {
                 Ok(m) => m,
                 Err(e) => {
                     tracing::error!("[Notification] Failed to receive manager from Main Thread: {:?}", e);
                     // Fallback to avoid panic, though this state is critical
                      user_notify::get_notification_manager("com.keithvassallo.clustercut".to_string(), None)
                 }
-            }
+            };
+
+            // Spawn Cleaner Thread (runs once per app lifecycle essentially, or per manager init)
+            let m_cleaner = manager.clone();
+            std::thread::spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                         tracing::error!("[Notification Cleaner] Failed to build runtime: {:?}", e);
+                         return;
+                    }
+                };
+
+                rt.block_on(async move {
+                    tracing::info!("[Notification Cleaner] Started timed notification cleaner.");
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        
+                        let should_clear = {
+                            let lock = LAST_NOTIFICATION_TIME.lock().unwrap();
+                            if let Some(last) = *lock {
+                                last.elapsed().as_secs() > 5
+                            } else {
+                                false
+                            }
+                        };
+
+                        if should_clear {
+                             tracing::info!("[Notification Cleaner] Inactivity > 5s. Clearing notifications.");
+                             // Reset timer first
+                             {
+                                 let mut lock = LAST_NOTIFICATION_TIME.lock().unwrap();
+                                 *lock = None;
+                             }
+                             
+                             // Clear notifications
+                             if let Err(e) = m_cleaner.remove_all_delivered_notifications() {
+                                  tracing::error!("[Notification Cleaner] Failed to remove delivered notifications: {:?}", e);
+                             } else {
+                                  tracing::info!("[Notification Cleaner] Notifications cleared.");
+                             }
+                        }
+                    }
+                });
+            });
+
+            manager
         });
 
         let manager = manager.clone();
