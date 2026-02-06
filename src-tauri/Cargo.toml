@@ -54,4 +54,12 @@ percent-encoding = "2.3"
 notify-rust = "4.11.3"
 zbus = { version = "4", features = ["tokio"] }
 image = "0.25.9"
-winrt-notification = "0.5"
+tauri-plugin-single-instance = "2"
+tauri-plugin-deep-link = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58.0", features = [
+    "Data_Xml_Dom",
+    "UI_Notifications", 
+    "UI_Notifications_Management"
+] }

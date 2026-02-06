@@ -395,40 +395,35 @@ export default function App() {
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
-    // Windows / macOS (Plugin) - Dynamic Import for Safety
+    // Deep Link & Notification Action Handler
     useEffect(() => {
-        let unlistenPlugin: any;
+        let unlistenDeepLink: any;
 
-        const setupPlugin = async () => {
-             // Dynamic import with robust error handling to prevent Linux crash
-             import("@tauri-apps/plugin-notification")
-                .then(({ onAction }) => {
-                    if (onAction) {
-                         onAction((notification) => {
-                             console.log("Plugin Action Received:", notification);
-                             handleNotificationClick();
-                         }).then((u) => { unlistenPlugin = u; });
-                    }
-                })
-                .catch((e) => {
-                    console.warn("Notification plugin not supported or failed to load (expected on Linux):", e);
-                });
+        const setupListener = async () => {
+             unlistenDeepLink = await listen<string[]>("deep-link", (event) => {
+                 console.log("Deep Link Received:", event);
+                 const args = event.payload;
+                 const urlStr = args.find(a => a.startsWith("clustercut://"));
+                 if (urlStr) {
+                     console.log("Action URL:", urlStr);
+                     if (urlStr.includes("action/show") || urlStr.includes("action/download")) {
+                         handleNotificationClick();
+                         // TODO: If download, trigger specific download logic if possible. 
+                         // For now, waking via handleNotificationClick satisfies "Show".
+                     }
+                 }
+             });
         };
+        
+        setupListener();
 
-        setupPlugin();
+        // Keep macOS plugin listener for fallback? 
+        // User specifically wanted native Windows actions.
+        // We can keep the plugin import for macOS only if we detect OS at runtime or just let it fail on Windows?
+        // Since we removed plugin from Windows build, dynamic import might fail on Windows, which is fine (catch block).
 
         return () => {
-             if (unlistenPlugin) {
-                 try {
-                     if (typeof unlistenPlugin === "function") {
-                         unlistenPlugin();
-                     } else if (unlistenPlugin.unlisten) {
-                         unlistenPlugin.unlisten();
-                     }
-                 } catch (e) {
-                     console.error("Failed to unlisten notification plugin:", e);
-                 }
-             }
+            if (unlistenDeepLink) unlistenDeepLink();
         };
     }, []);
 

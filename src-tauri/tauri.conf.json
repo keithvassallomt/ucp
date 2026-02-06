@@ -23,6 +23,11 @@
       "csp": null
     }
   },
+  "plugins": {
+    "deep-link": {
+      "schemes": ["clustercut"]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["deb", "rpm", "nsis", "dmg"],

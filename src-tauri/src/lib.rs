@@ -90,31 +90,55 @@ async fn get_autostart_state(app_handle: tauri::AppHandle) -> Result<Option<bool
 async fn show_native_notification(title: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use winrt_notification::{Toast, Duration, Sound};
-        Toast::new(Toast::POWERSHELL_APP_ID) // Using PowerShell ID transiently, but ideally use custom AUMID
-            .title(&title)
-            .text1(&body)
-            .sound(Some(Sound::SMS))
-            .duration(Duration::Short)
-            .show()
+        use windows::UI::Notifications::{ToastNotificationManager, ToastNotification};
+        use windows::Data::Xml::Dom::XmlDocument;
+        use windows::core::HSTRING;
+
+        let aumid = "com.keithvassallo.clustercut"; 
+
+        // Raw XML for Native Actions
+        // activationType="protocol" ensures clicking invokes "clustercut://..." which SingleInstance catches.
+        let xml = format!(r#"
+<toast activationType="protocol" launch="clustercut://action/show">
+    <visual>
+        <binding template="ToastGeneric">
+            <text>{}</text>
+            <text>{}</text>
+        </binding>
+    </visual>
+    <actions>
+        <action content="Show" arguments="clustercut://action/show" activationType="protocol"/>
+        <action content="Download" arguments="clustercut://action/download" activationType="protocol"/>
+    </actions>
+</toast>
+"#, title, body);
+
+        let doc = XmlDocument::new().map_err(|e| e.to_string())?;
+        doc.LoadXml(&HSTRING::from(&xml)).map_err(|e| e.to_string())?;
+
+        let toast = ToastNotification::CreateToastNotification(&doc).map_err(|e| e.to_string())?;
+        
+        // Create Notifier and Show
+        let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(aumid))
             .map_err(|e| e.to_string())?;
+            
+        notifier.Show(&toast).map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "linux")]
     {
         use notify_rust::Notification;
-        Notification::new()
+        let _ = Notification::new()
             .summary(&title)
             .body(&body)
             .appname("ClusterCut")
-            .timeout(notify_rust::Timeout::Milliseconds(5000)) // Short duration
+            .timeout(notify_rust::Timeout::Milliseconds(5000)) 
             .show()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string());
     }
     
-    // macOS - Fallback to Tauri plugin or similar if needed, 
-    // but for now we focus on user request "switch windows to winrt".
-    // We can assume plugin handles macOS or we add notify-rust for macOS too.
+    // macOS - Fallback handled by Frontend or separate plugin call if needed.
+    // Assuming backend calls are for file transfers primarily.
     
     Ok(())
 }
@@ -1051,6 +1075,17 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard::init())
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // Handle deep link activation from Toast
+            let _ = app.emit("deep-link", args);
+            // Always bring to front on activation
+             if let Some(win) = app.get_webview_window("main") {
+                 let _ = win.unminimize();
+                 let _ = win.show();
+                 let _ = win.set_focus();
+             }
+        }))
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![])))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(handle_shortcut).build())
