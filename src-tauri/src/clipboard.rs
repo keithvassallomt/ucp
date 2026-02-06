@@ -455,6 +455,7 @@ fn broadcast_clipboard(
                                 false,
                                 Some(2),
                                 "history",
+                                crate::NotificationPayload::None, 
                             );
                         }
                     }
