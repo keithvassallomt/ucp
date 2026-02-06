@@ -1072,10 +1072,16 @@ pub fn run() {
     // Initialize Logging
     init_logging();
     
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_clipboard::init())
-        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_clipboard::init());
+        
+    #[cfg(not(target_os = "linux"))]
+    {
+        builder = builder.plugin(tauri_plugin_deep_link::init());
+    }
+
+    builder
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Handle deep link activation from Toast
             let _ = app.emit("deep-link", args);
