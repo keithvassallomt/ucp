@@ -381,15 +381,15 @@ export default function App() {
     peersRef.current = peers;
   }, [peers]);
 
-  const handleNotificationClick = async () => {
-    logToBackend("Handling Notification Click in Frontend");
+  const handleNotificationClick = async (targetView: string = "history") => {
+    logToBackend(`Handling Notification Click in Frontend. Target View: ${targetView}`);
     try {
       const win = getCurrentWindow();
       await win.unminimize();
       await win.show();
       await win.setFocus();
-      logToBackend("Setting active view to history");
-      setActiveView("history");
+      logToBackend(`Setting active view to ${targetView}`);
+      setActiveView(targetView as any); // Cast to any to avoid strict type issues if view strings differ slightly
     } catch (e) {
       console.error("Failed to focus window:", e);
       logToBackend("Failed to focus window:", e);
@@ -709,10 +709,11 @@ export default function App() {
 
 
     // Linux (Custom notify-rust) & macOS (user-notify)
-    const unlistenNotification = listen("notification-clicked", (event) => {
+    const unlistenNotification = listen<any>("notification-clicked", (event) => {
       console.log("Custom notification clicked event:", event);
       logToBackend("Frontend received notification-clicked event:", event);
-      handleNotificationClick();
+      const view = event.payload?.view || "history";
+      handleNotificationClick(view);
     });
 
     const unlistenSettingsChanged = listen<AppSettings>("settings-changed", (event) => {

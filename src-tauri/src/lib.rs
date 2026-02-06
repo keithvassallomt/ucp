@@ -135,7 +135,7 @@ async fn show_native_notification(app_handle: tauri::AppHandle, title: String, b
 
     #[cfg(target_os = "macos")]
     {
-        send_notification(&app_handle, &title, &body, false, None);
+        send_notification(&app_handle, &title, &body, false, None, "history");
     }
     
     Ok(())
@@ -235,8 +235,7 @@ use transport::Transport;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 // Helper to broadcast a new peer to all known peers (Gossip)
-pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str, increment_badge: bool, _id: Option<i32>) {
-    // 1. Windows (Native winrt-notification, requested by user)
+pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str, increment_badge: bool, _id: Option<i32>, target_view: &str) {
     // 1. Windows (Native windows-rs with XML Actions)
     #[cfg(target_os = "windows")]
     {
@@ -279,6 +278,7 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
         tracing::info!("[Notification] macOS detected. Using user-notify...");
         let title = title.to_string();
         let body = body.to_string();
+        let view = target_view.to_string();
         let app = app_handle.clone();
         
         static NOTIFICATION_MANAGER: std::sync::OnceLock<std::sync::Arc<dyn user_notify::NotificationManager>> = std::sync::OnceLock::new();
@@ -302,7 +302,18 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
                             user_notify::NotificationResponseAction::Default => {
                                 let _ = app_handle_callback.get_webview_window("main").map(|w| {
                                     tracing::info!("[Notification] Emitting 'notification-clicked' to main window...");
-                                    let _ = w.emit("notification-clicked", ());
+                                    // Extract view from payload
+                                    let mut view = "history".to_string(); // Default
+                                    if let Some(v) = response.user_info.get("view") {
+                                        view = v.clone();
+                                    }
+                                    
+                                    #[derive(serde::Serialize, Clone)]
+                                    struct Payload {
+                                        view: String,
+                                    }
+
+                                    let _ = w.emit("notification-clicked", Payload { view });
                                     let _ = w.unminimize();
                                     let _ = w.show();
                                     let _ = w.set_focus();
@@ -357,9 +368,14 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
                 }
 
                 tracing::info!("[Notification] Sending notification...");
-                let notification = NotificationBuilder::new()
+                let mut notification = NotificationBuilder::new()
                     .title(&title)
                     .body(&body);
+                
+                // Add Context
+                let mut map = std::collections::HashMap::new();
+                map.insert("view".to_string(), view);
+                notification = notification.set_user_info(map);
 
                 match manager.send_notification(notification).await {
                     Ok(_) => tracing::info!("[Notification] Sent successfully via user-notify"),
@@ -377,6 +393,7 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
         
         let title = title.to_string();
         let body = body.to_string();
+        let view = target_view.to_string();
         let app = app_handle.clone();
 
         // Spawn to avoid blocking
@@ -416,7 +433,15 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
                 tracing::info!("Notification Action Clicked: {}", action);
                 if action == "default" || action == "Open" || action == "open_btn" {
                     tracing::info!("Emitting 'notification-clicked' event");
-                    let _ = app.emit("notification-clicked", ());
+                    
+                    #[derive(serde::Serialize, Clone)]
+                    struct Payload {
+                        view: String,
+                    }
+                    
+                    let _ = app.emit("notification-clicked", Payload { view }); // Global emit fine for Linux mostly?
+                    // Actually, let's keep consistent and try window emit if possible, 
+                    // but we used `app` here. `app` is AppHandle.
                     
                     let _ = app.get_webview_window("main").map(|w| {
                         let _ = w.unminimize();
@@ -438,7 +463,7 @@ fn check_and_notify_leave(app_handle: &tauri::AppHandle, state: &AppState, peer:
         if let Some(remote_net) = &peer.network_name {
             if *remote_net == local_net {
                 tracing::info!("[Notification] Device Left: {}", peer.hostname);
-                send_notification(app_handle, "Device Left", &format!("{} has left the cluster", peer.hostname), false, Some(1));
+                send_notification(app_handle, "Device Left", &format!("{} has left the cluster", peer.hostname), false, Some(1), "devices");
             }
         }
     }
@@ -762,7 +787,7 @@ async fn probe_ip(
                           let notifications = state.settings.lock().unwrap().notifications.clone();
                           if notifications.device_join {
                              tracing::info!("[Notification] Triggering 'Device Joined' for manual peer: {}", peer.hostname);
-                             send_notification(&app_handle, "Device Joined", &format!("Found manual peer: {}", peer.hostname), false, Some(1));
+                             send_notification(&app_handle, "Device Joined", &format!("Found manual peer: {}", peer.hostname), false, Some(1), "devices");
                           }
                      }
                 },
@@ -1064,7 +1089,7 @@ async fn send_clipboard(
                      // Notify locally
                      let notifications = state.settings.lock().unwrap().notifications.clone();
                      if notifications.data_sent {
-                         send_notification(&app_handle, "Clipboard Sent", "Manual broadcast successful.", false, Some(2));
+                         send_notification(&app_handle, "Clipboard Sent", "Manual broadcast successful.", false, Some(2), "history");
                      }
                      
                      Ok(())
@@ -1474,7 +1499,7 @@ pub fn run() {
                                         if should_notify {
                                             if d_state.settings.lock().unwrap().notifications.device_join {
                                                 tracing::info!("[Notification] Triggering 'Device Joined' for discovered peer: {}", peer.hostname);
-                                                send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname), false, Some(1));
+                                                send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname), false, Some(1), "devices");
                                             } else {
                                                 tracing::debug!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
                                             }                                      } else {
@@ -2028,7 +2053,7 @@ async fn handle_incoming_file_stream(recv: quinn::RecvStream, addr: std::net::So
      let settings = state.settings.lock().unwrap();
      if settings.notify_large_files && header.file_size > settings.max_auto_download_size {
          let body = format!("Download complete: {}", header.file_name);
-         send_notification(&app, "Download Complete", &body, false, None);
+         send_notification(&app, "Download Complete", &body, false, None, "history");
      }
 
     // 5. Verify Size
@@ -2198,7 +2223,7 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                             if notify_large {
                                                 tracing::info!("Large file or manual mode. Sending notification."); 
                                                 let body = format!("Received {} files from {}. Click to download.", files.len(), sender);
-                                                send_notification(&listener_handle, "Files Available", &body, true, None);
+                                                send_notification(&listener_handle, "Files Available", &body, true, None, "history");
                                             } else {
                                                 tracing::warn!("Large file received but 'notify_large_files' is FALSE. No notification sent.");
                                             }
@@ -2225,7 +2250,7 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                 
                                 let notifications = listener_state.settings.lock().unwrap().notifications.clone();
                                 if notifications.data_received {
-                                    send_notification(&listener_handle, "Clipboard Received", "Content copied to clipboard", false, Some(2));
+                                    send_notification(&listener_handle, "Clipboard Received", "Content copied to clipboard", false, Some(2), "history");
                                 }
                             }
 
@@ -2836,7 +2861,7 @@ fn handle_shortcut(app_handle: &tauri::AppHandle, shortcut: &Shortcut, event: Sh
                                             // Notification
                                             let notif_settings = settings.notifications.clone();
                                             if notif_settings.data_sent {
-                                                send_notification(app_handle, "Clipboard Sent", "Manual broadcast successful.", false, Some(2));
+                                                send_notification(app_handle, "Clipboard Sent", "Manual broadcast successful.", false, Some(2), "history");
                                             }
                                         }
                                     }
@@ -2865,11 +2890,11 @@ fn handle_shortcut(app_handle: &tauri::AppHandle, shortcut: &Shortcut, event: Sh
                         tracing::error!("Failed to write pending clipboard to system: {}", e);
                     } else {
                         tracing::info!("Confirmed pending clipboard content via shortcut.");
-                        send_notification(app_handle, "Clipboard Received", "Pending content applied.", false, Some(2));
+                        send_notification(app_handle, "Clipboard Received", "Pending content applied.", false, Some(2), "history");
                     }
                 } else {
                     tracing::info!("No pending clipboard content to receive.");
-                     send_notification(app_handle, "Manual Receive", "No pending content.", false, Some(3));
+                     send_notification(app_handle, "Manual Receive", "No pending content.", false, Some(3), "history");
                 }
            }
         }

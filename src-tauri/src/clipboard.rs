@@ -454,6 +454,7 @@ fn broadcast_clipboard(
                                 body,
                                 false,
                                 Some(2),
+                                "history",
                             );
                         }
                     }
