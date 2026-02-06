@@ -300,8 +300,9 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
                         tracing::info!("Notification Response: {:?}" , response);
                         match response.action {
                             user_notify::NotificationResponseAction::Default => {
-                                let _ = app_handle_callback.emit("notification-clicked", ());
                                 let _ = app_handle_callback.get_webview_window("main").map(|w| {
+                                    tracing::info!("[Notification] Emitting 'notification-clicked' to main window...");
+                                    let _ = w.emit("notification-clicked", ());
                                     let _ = w.unminimize();
                                     let _ = w.show();
                                     let _ = w.set_focus();
