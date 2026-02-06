@@ -1033,8 +1033,11 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(handle_shortcut).build())
         .manage(AppState::new())
         .setup(|app| {
+            // Clear Cache on Startup
+            clear_cache(app.handle());
+
             // Initialize QUIC Transport (Fixed Port 4654 for Discovery, or random fallback)
-            let transport = tauri::async_runtime::block_on(async { 
+            let transport = tauri::async_runtime::block_on(async {  
                 match Transport::new(4654) {
                     Ok(t) => Ok(t),
                     Err(e) => {
@@ -1547,19 +1550,7 @@ pub fn run() {
             configure_autostart,
             get_autostart_state,
         ])
-        .setup(|app| {
-             // Clear Cache on Startup
-             clear_cache(app.handle());
-             
-             // Initialize Tray
-             // ...
-             #[cfg(desktop)]
-             {
-                let handle = app.handle();
-                crate::tray::create_tray(handle)?;
-             }
-             Ok(())
-        })
+
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -1656,14 +1647,18 @@ pub fn run() {
 }
 
 
+
 fn clear_cache(app: &tauri::AppHandle) {
-    if let Ok(cache_dir) = app.path().app_cache_dir() {
+    if let Ok(root_cache_dir) = app.path().app_cache_dir() {
+        // Use a subdirectory to avoid nuking Webview2/GTK cache
+        let cache_dir = root_cache_dir.join("temp_downloads");
+        
         if func_exists(&cache_dir) {
-            tracing::info!("Clearing cache directory: {:?}", cache_dir);
+            tracing::info!("Clearing temp downloads: {:?}", cache_dir);
             if let Err(e) = std::fs::remove_dir_all(&cache_dir) {
-                tracing::error!("Failed to clear cache: {}", e);
+                tracing::error!("Failed to clear temp downloads: {}", e);
             }
-            // Re-create it immediately so it exists for use
+            // Re-create it immediately
             let _ = std::fs::create_dir_all(&cache_dir);
         }
     }
@@ -1702,8 +1697,8 @@ async fn handle_incoming_file_stream(recv: quinn::RecvStream, addr: std::net::So
     tracing::info!("Receiving File: {} ({} bytes) [ID: {}]", header.file_name, header.file_size, header.id);
     
     // 2. Prepare Output File
-    // Use Cache Directory
-    let cache_dir = match app.path().app_cache_dir() {
+    // Use Cache Directory -> temp_downloads
+    let root_cache_dir = match app.path().app_cache_dir() {
         Ok(p) => p,
         Err(e) => {
              tracing::error!("Failed to get cache dir: {}", e);
@@ -1711,6 +1706,8 @@ async fn handle_incoming_file_stream(recv: quinn::RecvStream, addr: std::net::So
         }
     };
     
+    let cache_dir = root_cache_dir.join("temp_downloads");
+
     if let Err(e) = std::fs::create_dir_all(&cache_dir) {
         tracing::error!("Failed to create cache dir: {}", e);
         return;
