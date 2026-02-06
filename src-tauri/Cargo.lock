@@ -902,6 +902,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "url",
+ "user-notify",
  "uuid",
  "windows 0.58.0",
  "zbus 4.4.0",
@@ -3223,6 +3224,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21af20a1b50be5ac5861f74af1a863da53a11c38684d9818d82f1c42f7fdc6c2"
 dependencies = [
  "futures-lite",
+ "image",
+ "lazy_static",
  "log",
  "mac-notification-sys",
  "serde",
@@ -3510,6 +3513,18 @@ dependencies = [
  "bitflags 2.10.0",
  "objc2",
  "objc2-core-foundation",
+ "objc2-foundation",
+]
+
+[[package]]
+name = "objc2-user-notifications"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9df9128cbbfef73cda168416ccf7f837b62737d748333bfe9ab71c245d76613e"
+dependencies = [
+ "bitflags 2.10.0",
+ "block2",
+ "objc2",
  "objc2-foundation",
 ]
 
@@ -4763,6 +4778,12 @@ dependencies = [
  "serde",
  "serde_core",
 ]
+
+[[package]]
+name = "send_wrapper"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
 
 [[package]]
 name = "serde"
@@ -6209,6 +6230,33 @@ dependencies = [
  "serde",
  "unic-ucd-ident",
  "url",
+]
+
+[[package]]
+name = "user-notify"
+version = "0.4.2"
+source = "git+https://github.com/Simon-Laux/user-notify#9ea5de54fb4c31782204ed0134d7ffd6cac5d9f5"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "block2",
+ "image",
+ "log",
+ "notify-rust",
+ "objc2",
+ "objc2-foundation",
+ "objc2-user-notifications",
+ "quick-xml 0.37.5",
+ "send_wrapper",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
+ "uuid",
+ "windows 0.61.3",
+ "windows-collections",
 ]
 
 [[package]]

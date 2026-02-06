@@ -256,22 +256,59 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
         }
     }
 
-    // 2. macOS (Native Plugin)
+    // 2. macOS (user-notify)
     #[cfg(target_os = "macos")]
     {
-        use tauri_plugin_notification::NotificationExt;
-        let mut builder = app_handle.notification().builder()
-            .title(title)
-            .body(body)
-            .sound("Ping");
-            
-        if let Some(id_val) = _id {
-            builder = builder.id(id_val).group("ClusterCut");
-        }
+        tracing::debug!("[Notification] macOS detected. Using user-notify...");
+        let title = title.to_string();
+        let body = body.to_string();
+        let app = app_handle.clone();
         
-        if let Err(e) = builder.show() {
-             tracing::error!("[Notification Error] Native plugin failed: {}", e);
-        }
+        tauri::async_runtime::spawn(async move {
+            use user_notify::Notification;
+            
+            let mut notification = Notification::new();
+            notification
+                .title(&title)
+                .body(&body)
+                .sound("Ping"); // user-notify supports sound
+
+            // On macOS, clicking the notification body is the default action.
+            // user-notify's `show()` returns a handle that allows waiting for action.
+            match notification.show().await {
+                Ok(handle) => {
+                     // Wait for action (click)
+                     // Note: user-notify might behave differently on macOS regarding "default" action. 
+                     // Usually "default" is the body click.
+                     tracing::info!("Notification shown, waiting for action...");
+                     
+                     // We spawn the wait so we don't block this thread if show().await didn't block (it shouldn't).
+                     // Actually show().await returns a NotificationHandle.
+                     
+                     let action = handle.wait_for_action().await;
+                     tracing::info!("Notification Action: {:?}", action);
+                     
+                     // If action is Default or similar, we emit.
+                     // user-notify Action enum: Default, Action(String), Closed, Dismissed
+                     match action {
+                         user_notify::Action::Default | user_notify::Action::Action(_) => {
+                            tracing::info!("Emitting 'notification-clicked' event");
+                            let _ = app.emit("notification-clicked", ());
+                            
+                            let _ = app.get_webview_window("main").map(|w| {
+                                let _ = w.unminimize();
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            });
+                         },
+                         _ => {}
+                     }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to show macOS notification: {}", e);
+                }
+            }
+        });
     }
     
     // 2. Linux Workaround (notify-rust via DBus)
