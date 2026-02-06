@@ -656,6 +656,7 @@ export default function App() {
       unlistenDelete.then((f) => f());
       unlistenPairingFailed.then((f) => f());
       unlistenNotification.then((f) => f());
+      unlistenAny.then((f) => f());
       unlistenSettingsChanged.then((f) => f());
     };
   }, [myHostname]); // Re-bind if hostname loads (needed for sender check)
