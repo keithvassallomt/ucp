@@ -629,10 +629,15 @@ export default function App() {
         setJoinBusy(false);
     });
 
-    const unlistenNotification = listen("notification-clicked", () => {
-        console.log("Notification clicked! Navigating to History...");
+    // Generic Event Logging for Debugging Notification Clicks on Windows/macOS
+    const unlistenAny = listen("tauri://notification", (event) => {
+        console.log("Create generic notification event:", event);
+    });
+
+    const unlistenNotification = listen("notification-clicked", (event) => {
+        console.log("Notification clicked event received!", event);
         setActiveView("history");
-        // Bring window to front handled by backend
+        // Bring to front is standard OS behavior or handled by backend
     });
 
     const unlistenSettingsChanged = listen<AppSettings>("settings-changed", (event) => {

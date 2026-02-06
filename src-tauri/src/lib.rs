@@ -225,33 +225,49 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
             // We can add an action.
             // For now, we add "Open" action for everything, or we can make it conditional.
             // User requested click to open.
-            notification.action("default", "Open");
+            notification
+                .action("default", "Open")
+                .action("open_btn", "Open");
 
-            // Hints for Badge logic (Linux doesn't have standard badges, but some docks do)
-            // We'll ignore badge increment on Linux for now as it doesn't map cleanly to DBus notify,
-            // unless we use specific extension hints.
-            
-            match notification.show_async().await {
-                Ok(handler) => {
-                    tracing::debug!("[Notification] Notification sent successfully.");
-                    // Setup listener for action (blocking, involves closure)
-                    handler.wait_for_action(move |action| {
-                         tracing::info!("[Notification] Action Invoked: {:?}", action);
-                         if action == "default" || action == "Open" {
-                             // Emit event to frontend to navigate
-                             tracing::info!("Emitting 'notification-clicked' event");
-                             let _ = app.emit("notification-clicked", ());
-                             
-                             // Also focus window? 
-                             let _ = app.get_webview_window("main").map(|w| w.set_focus());
-                         }
-                    });
-                },
-                Err(e) => {
-                    tracing::error!("[Notification Error] notify-rust failed: {}", e);
-                }
+            if let Ok(id) = std::env::var("FLATPAK_ID") {
+                notification.hint(notify_rust::Hint::DesktopEntry(id));
             }
+
+            // In Flatpak, show() is blocking or async depending on impl, but usually we use show_async or spawn blocking
+            // For now, we use a simple handle implementation if possible, or just standard show
+            let handle = match notification.show() {
+                Ok(h) => h,
+                Err(e) => {
+                    tracing::error!("Failed to show notification: {}", e);
+                    return;
+                }
+            };
+            
+            // Wait for action (Blocking call, hence spawn)
+            handle.wait_for_action(move |action| {
+                tracing::info!("Notification Action Clicked: {}", action);
+                if action == "default" || action == "Open" || action == "open_btn" {
+                    tracing::info!("Emitting 'notification-clicked' event");
+                    let _ = app.emit("notification-clicked", ());
+                    let _ = app.get_webview_window("main").map(|w| w.set_focus());
+                }
+            });
         });
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        use tauri_plugin_notification::NotificationExt;
+        
+        let _ = app_handle.notification()
+            .builder()
+            .title(title)
+            .body(body)
+            .show();
+            
+        // For Windows/macOS, we rely on the OS or Plugin to bring window to front.
+        // Sadly, v2 plugin doesn't easily expose "on_click" callback in Rust without setup.
+        // We will rely on frontend listener if available, or just standard OS behavior.
     }
 }
 
