@@ -253,17 +253,7 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
         });
     }
 
-    // 3. Windows / macOS Implementation (Plugin)
-    #[cfg(not(target_os = "linux"))]
-    {
-        use tauri_plugin_notification::NotificationExt;
-        
-        let _ = app_handle.notification()
-            .builder()
-            .title(title)
-            .body(body)
-            .show();
-    }
+
 }
 
 fn check_and_notify_leave(app_handle: &tauri::AppHandle, state: &AppState, peer: &Peer) {
