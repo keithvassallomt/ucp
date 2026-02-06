@@ -4,8 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
-import { 
-  Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2, LogOut, 
+import {
+  Monitor, Copy, History, ShieldCheck, PlusCircle, Trash2, LogOut,
   Settings, Wifi, Lock, Unlock, AlertTriangle, Info, CheckCircle2,
   ChevronDown, ChevronRight, ArrowUp, ArrowDown, Send, Download, Puzzle, Loader2, Unplug
 } from "lucide-react";
@@ -14,13 +14,13 @@ import { ShortcutRecorder } from "./components/ShortcutRecorder";
 
 // Helper for backend logging
 const logToBackend = (msg: string, ...args: any[]) => {
-    const formatted = [msg, ...args].map(a => 
-        typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-    ).join(" ");
-    invoke("log_frontend", { message: formatted }).catch(_err => {
-        // Fallback if backend call fails, though user hates console.log, we need some safety.
-        // But we'll try to keep it silent if possible or just minimal.
-    });
+  const formatted = [msg, ...args].map(a =>
+    typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
+  ).join(" ");
+  invoke("log_frontend", { message: formatted }).catch(_err => {
+    // Fallback if backend call fails, though user hates console.log, we need some safety.
+    // But we'll try to keep it silent if possible or just minimal.
+  });
 };
 
 /* --- Types --- */
@@ -48,33 +48,33 @@ type NearbyNetwork = {
 };
 
 type HistoryItem = {
-    id: string;
-    origin: "local" | "remote";
-    device: string; // The sender's hostname
-    ts: number; // Unix timestamp in seconds
-    text: string;
-    files?: { name: string; size: number; }[];
-    sender_id?: string;
+  id: string;
+  origin: "local" | "remote";
+  device: string; // The sender's hostname
+  ts: number; // Unix timestamp in seconds
+  text: string;
+  files?: { name: string; size: number; }[];
+  sender_id?: string;
 };
 
 // Simple Time Ago Helper
 function timeAgo(ts: number): string {
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - ts;
-    if (diff < 10) return "Just now";
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return new Date(ts * 1000).toLocaleDateString();
+  const now = Math.floor(Date.now() / 1000);
+  const diff = now - ts;
+  if (diff < 10) return "Just now";
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return new Date(ts * 1000).toLocaleDateString();
 }
 
 function formatBytes(bytes: number, decimals = 1) {
-    if (!+bytes) return '0 Bytes';
-    const k = 1024;
-    const dm = decimals < 0 ? 0 : decimals;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+  if (!+bytes) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
 
@@ -113,10 +113,10 @@ function Badge({
     tone === "good"
       ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
       : tone === "warn"
-      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25"
-      : tone === "bad"
-      ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/25"
-      : "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border-zinc-500/20";
+        ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25"
+        : tone === "bad"
+          ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/25"
+          : "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border-zinc-500/20";
 
   return (
     <span className={clsx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium", classes)}>
@@ -186,10 +186,10 @@ function Button({
     variant === "primary"
       ? "bg-emerald-600 text-white hover:bg-emerald-700"
       : variant === "danger"
-      ? "bg-rose-600 text-white hover:bg-rose-700"
-      : variant === "ghost"
-      ? "bg-transparent hover:bg-zinc-900/5 dark:hover:bg-white/5 text-zinc-800 dark:text-zinc-100"
-      : "bg-zinc-900/5 hover:bg-zinc-900/10 text-zinc-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-zinc-50";
+        ? "bg-rose-600 text-white hover:bg-rose-700"
+        : variant === "ghost"
+          ? "bg-transparent hover:bg-zinc-900/5 dark:hover:bg-white/5 text-zinc-800 dark:text-zinc-100"
+          : "bg-zinc-900/5 hover:bg-zinc-900/10 text-zinc-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-zinc-50";
 
   return (
     <button className={clsx(base, sizes, variants, "min-w-[44px]", className)} {...props}>
@@ -225,11 +225,11 @@ function IconButton({
           : danger
             ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
             : "text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-50",
-         variant === "default" && !active && !danger && "bg-zinc-900/5 dark:bg-white/5"
+        variant === "default" && !active && !danger && "bg-zinc-900/5 dark:bg-white/5"
       )}
     >
       {children}
-      
+
       {/* Tooltip */}
       <span className="pointer-events-none absolute top-full mt-2 hidden whitespace-nowrap rounded-lg bg-zinc-900 px-2 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:block group-hover:opacity-100 dark:bg-white dark:text-zinc-900 z-50">
         {label}
@@ -306,7 +306,7 @@ export default function App() {
   /* Logic & State from Old App */
   const [peers, setPeers] = useState<Peer[]>([]);
   const peersRef = useRef<Peer[]>([]);
-  
+
   const [clipboardHistory, setClipboardHistory] = useState<HistoryItem[]>([]);
   const [activeView, setActiveView] = useState<View>("devices");
   const [showExtensionDialog, setShowExtensionDialog] = useState(false);
@@ -318,15 +318,15 @@ export default function App() {
 
   const [unsavedChanges, setUnsavedChanges] = useState(false);
   const [dialog, setDialog] = useState<{
-      open: boolean;
-      title: string;
-      description: string;
-      onConfirm: () => void;
-      onCancel?: () => void;
-      confirmLabel?: string;
-      cancelLabel?: string;
-      type?: "neutral" | "danger" | "success";
-  }>({ open: false, title: "", description: "", onConfirm: () => {} });
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    type?: "neutral" | "danger" | "success";
+  }>({ open: false, title: "", description: "", onConfirm: () => { } });
 
   /* Modal State */
   const [joinOpen, setJoinOpen] = useState(false);
@@ -336,14 +336,14 @@ export default function App() {
   const [pairingPeerId, setPairingPeerId] = useState<string | null>(null);
 
   const [leaveOpen, setLeaveOpen] = useState(false);
-  
+
   const [addManualOpen, setAddManualOpen] = useState(false);
   const [manualIp, setManualIp] = useState("");
   const [manualBusy, setManualBusy] = useState(false);
-  
+
   const [joinError, setJoinError] = useState("");
   const [expandedNetworks, setExpandedNetworks] = useState<Set<string>>(new Set());
-  
+
   // Manual Sync State
   // Manual Sync State
   const [manualSyncOpen, setManualSyncOpen] = useState(false);
@@ -356,99 +356,106 @@ export default function App() {
   const [isAutoSend, setIsAutoSend] = useState(true); // Default assumption, updated bySettings
   const isAutoSendRef = useRef(isAutoSend);
   useEffect(() => { isAutoSendRef.current = isAutoSend; }, [isAutoSend]);
-  
+
   // Rule 2: If local matches last received, not a candidate for sending.
-  const hasPendingSend = !isAutoSend 
-      && localClipboard !== lastSentClipboard 
-      && localClipboard !== lastReceivedClipboard
-      && localClipboard.length > 0;
+  const hasPendingSend = !isAutoSend
+    && localClipboard !== lastSentClipboard
+    && localClipboard !== lastReceivedClipboard
+    && localClipboard.length > 0;
 
   // Rule 3: If pending receive matches local (already have it or I sent it), not a candidate.
-  const hasPendingReceive = !!pendingReceive 
-      && pendingReceive.text !== localClipboard;
-      
+  const hasPendingReceive = !!pendingReceive
+    && pendingReceive.text !== localClipboard;
+
   const toggleNetwork = (name: string) => {
-      setExpandedNetworks(prev => {
-          const next = new Set(prev);
-          if (next.has(name)) next.delete(name);
-          else next.add(name);
-          return next;
-      });
+    setExpandedNetworks(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   };
 
   // Keep ref in sync
   useEffect(() => {
-      peersRef.current = peers;
+    peersRef.current = peers;
   }, [peers]);
 
-    const handleNotificationClick = async () => {
-        try {
-            const win = getCurrentWindow();
-            await win.unminimize();
-            await win.show();
-            await win.setFocus();
-            setActiveView("history");
-        } catch (e) {
-            console.error("Failed to focus window:", e);
-        }
-    };
+  const handleNotificationClick = async () => {
+    logToBackend("Handling Notification Click in Frontend");
+    try {
+      const win = getCurrentWindow();
+      await win.unminimize();
+      await win.show();
+      await win.setFocus();
+      logToBackend("Setting active view to history");
+      setActiveView("history");
+    } catch (e) {
+      console.error("Failed to focus window:", e);
+      logToBackend("Failed to focus window:", e);
+    }
+  };
+
+  // ...
+
+
 
   const [settings, setSettings] = useState<AppSettings | null>(null);
 
-    // Deep Link & Notification Action Handler
-    useEffect(() => {
-        let unlistenDeepLink: any;
+  // Deep Link & Notification Action Handler
+  useEffect(() => {
+    let unlistenDeepLink: any;
 
-        const handleArgs = (args: string[]) => {
-             console.log("Checking args for deep link:", args);
-             const urlStr = args.find(a => a.startsWith("clustercut://"));
-             if (urlStr) {
-                 console.log("Found Deep Link URL:", urlStr);
-                 logToBackend("Deep Link Detected:", urlStr);
-                 if (urlStr.includes("action/show") || urlStr.includes("action/download")) {
-                     console.log("Action matched! Switching to history.");
-                     logToBackend("Action matched, switching to history.");
-                     setActiveView("history");
-                     // We don't need handleNotificationClick() here if it just does show/focus/view, 
-                     // because if we are running cold or handling via single-instance, we are likely already focused or about to be.
-                     // But calling it ensures we unminimize if needed.
-                     handleNotificationClick();
-                 } else {
-                     // Generic open
-                     setActiveView("history"); // Default behavior for deep link? or Devices?
-                 }
-             }
-        };
+    const handleArgs = (args: string[]) => {
+      console.log("Checking args for deep link:", args);
+      const urlStr = args.find(a => a.startsWith("clustercut://"));
+      if (urlStr) {
+        console.log("Found Deep Link URL:", urlStr);
+        logToBackend("Deep Link Detected:", urlStr);
+        if (urlStr.includes("action/show") || urlStr.includes("action/download")) {
+          console.log("Action matched! Switching to history.");
+          logToBackend("Action matched, switching to history.");
+          setActiveView("history");
+          // We don't need handleNotificationClick() here if it just does show/focus/view, 
+          // because if we are running cold or handling via single-instance, we are likely already focused or about to be.
+          // But calling it ensures we unminimize if needed.
+          handleNotificationClick();
+        } else {
+          // Generic open
+          setActiveView("history"); // Default behavior for deep link? or Devices?
+        }
+      }
+    };
 
-        const setupListener = async () => {
-             // 1. Check Cold Start Args
-             try {
-                 const currentArgs = await invoke<string[]>("get_launch_args");
-                 handleArgs(currentArgs);
-             } catch (e) {
-                 console.error("Failed to get launch args:", e);
-             }
+    const setupListener = async () => {
+      // 1. Check Cold Start Args
+      try {
+        const currentArgs = await invoke<string[]>("get_launch_args");
+        handleArgs(currentArgs);
+      } catch (e) {
+        console.error("Failed to get launch args:", e);
+      }
 
-             // 2. Listen for Runtime Deep Links (Single Instance)
-             unlistenDeepLink = await listen<string[]>("deep-link", (event) => {
-                 console.log("Deep Link Event Received:", event);
-                 handleArgs(event.payload);
-             });
-        };
-        
-        setupListener();
+      // 2. Listen for Runtime Deep Links (Single Instance)
+      unlistenDeepLink = await listen<string[]>("deep-link", (event) => {
+        console.log("Deep Link Event Received:", event);
+        handleArgs(event.payload);
+      });
+    };
+
+    setupListener();
 
 
 
-        // Keep macOS plugin listener for fallback? 
-        // User specifically wanted native Windows actions.
-        // We can keep the plugin import for macOS only if we detect OS at runtime or just let it fail on Windows?
-        // Since we removed plugin from Windows build, dynamic import might fail on Windows, which is fine (catch block).
+    // Keep macOS plugin listener for fallback? 
+    // User specifically wanted native Windows actions.
+    // We can keep the plugin import for macOS only if we detect OS at runtime or just let it fail on Windows?
+    // Since we removed plugin from Windows build, dynamic import might fail on Windows, which is fine (catch block).
 
-        return () => {
-            if (unlistenDeepLink) unlistenDeepLink();
-        };
-    }, []);
+    return () => {
+      if (unlistenDeepLink) unlistenDeepLink();
+    };
+  }, []);
 
   /* Connection Failure Logic */
   const [isConnectionFailed, setIsConnectionFailed] = useState(false);
@@ -458,17 +465,17 @@ export default function App() {
 
   // Check for manual peers on startup
   useEffect(() => {
-      invoke<Record<string, Peer>>("get_known_peers").then(map => {
-          logToBackend("Known Peers Raw:", map);
-          const hasManual = Object.values(map).some(p => p.is_manual);
-          logToBackend("Computed hasManual:", hasManual);
-          setHasManualPeers(hasManual);
-      }).catch(e => logToBackend("Error fetching known peers:", e));
+    invoke<Record<string, Peer>>("get_known_peers").then(map => {
+      logToBackend("Known Peers Raw:", map);
+      const hasManual = Object.values(map).some(p => p.is_manual);
+      logToBackend("Computed hasManual:", hasManual);
+      setHasManualPeers(hasManual);
+    }).catch(e => logToBackend("Error fetching known peers:", e));
   }, [settings, retryCount]); // Re-check if settings change or we retry
 
   useEffect(() => {
     if (!settings) return;
-    
+
     // Logic:
     // 1. Provisioned Mode: Always check.
     // 2. Auto Mode: Check ONLY if we have explicit "Manual" peers (which implies Remote/VPN).
@@ -478,50 +485,50 @@ export default function App() {
     // Show connecting state if we are checking, have no peers, and haven't failed yet.
     // We use a small delay to avoid flashing if connection is instant (though 0 peers usually implies waiting).
     // Actually, usually immediate.
-    
+
     logToBackend("Connection Check: Mode =", settings.cluster_mode, "HasManual =", hasManualPeers, "Should Check =", shouldCheck, "Peers =", peers.length);
 
     if (shouldCheck && !connectionCheckDismissed) {
-        if (peers.length > 0) {
-            logToBackend("Connection Check: Peers found. Clearing failure state.");
-            setIsConnectionFailed(false);
-            setConnectionCheckDismissed(false); // Reset dismissal on success
-            return;
-        }
-        
-        logToBackend("Connection Check: No peers. Starting timer...");
-        const timer = setTimeout(() => {
-             setIsConnectionFailed(true);
-             logToBackend("Connection Check: Timeout reached. Showing modal.");
-        }, 15000); // 15s
-
-        return () => clearTimeout(timer);
-    } else {
+      if (peers.length > 0) {
+        logToBackend("Connection Check: Peers found. Clearing failure state.");
         setIsConnectionFailed(false);
+        setConnectionCheckDismissed(false); // Reset dismissal on success
+        return;
+      }
+
+      logToBackend("Connection Check: No peers. Starting timer...");
+      const timer = setTimeout(() => {
+        setIsConnectionFailed(true);
+        logToBackend("Connection Check: Timeout reached. Showing modal.");
+      }, 15000); // 15s
+
+      return () => clearTimeout(timer);
+    } else {
+      setIsConnectionFailed(false);
     }
   }, [settings, peers.length, retryCount, hasManualPeers, connectionCheckDismissed]);
 
   const handleRetryConnection = async () => {
-      setIsConnectionFailed(false);
-      setConnectionCheckDismissed(false);
-      setRetryCount(c => c + 1);
-      await invoke("retry_connection");
+    setIsConnectionFailed(false);
+    setConnectionCheckDismissed(false);
+    setRetryCount(c => c + 1);
+    await invoke("retry_connection");
   };
 
   const handleConnectionFailureLeave = async () => {
-      setIsConnectionFailed(false);
-      try {
-          await invoke("leave_network");
-      } catch(e) { logToBackend("Error leaving network:", e); }
+    setIsConnectionFailed(false);
+    try {
+      await invoke("leave_network");
+    } catch (e) { logToBackend("Error leaving network:", e); }
   };
 
 
   /* Data Fetching */
   const fetchSettings = () => {
-      invoke<AppSettings>("get_settings").then(s => {
-          setSettings(s);
-          setIsAutoSend(s.auto_send);
-      });
+    invoke<AppSettings>("get_settings").then(s => {
+      setSettings(s);
+      setIsAutoSend(s.auto_send);
+    });
   };
 
   // GNOME Extension Check
@@ -529,35 +536,35 @@ export default function App() {
   const hasCheckedExtension = useRef(false);
 
   useEffect(() => {
-      if (!hasCheckedExtension.current && settings?.ignore_extension_missing === false) {
-           hasCheckedExtension.current = true; // Mark as checked so we don't spam
-           
-           invoke<{is_gnome: boolean, is_installed: boolean}>('check_gnome_extension_status')
-           .then(status => {
-               if (status.is_gnome && !status.is_installed) {
-                   setShowExtensionDialog(true);
-               }
-           })
-           .catch(e => console.error("Failed to check extension status:", e));
-      }
+    if (!hasCheckedExtension.current && settings?.ignore_extension_missing === false) {
+      hasCheckedExtension.current = true; // Mark as checked so we don't spam
+
+      invoke<{ is_gnome: boolean, is_installed: boolean }>('check_gnome_extension_status')
+        .then(status => {
+          if (status.is_gnome && !status.is_installed) {
+            setShowExtensionDialog(true);
+          }
+        })
+        .catch(e => console.error("Failed to check extension status:", e));
+    }
   }, [settings]);
 
   const handleInstallExtension = () => {
-       invoke('open_url', { url: "https://extensions.gnome.org" }).catch(() => {
-            invoke('opener', {url: "https://extensions.gnome.org"}).catch(() => {
-                 window.open("https://extensions.gnome.org", "_blank");
-            });
-       });
-       setShowExtensionDialog(false);
+    invoke('open_url', { url: "https://extensions.gnome.org" }).catch(() => {
+      invoke('opener', { url: "https://extensions.gnome.org" }).catch(() => {
+        window.open("https://extensions.gnome.org", "_blank");
+      });
+    });
+    setShowExtensionDialog(false);
   };
-  
+
   const handleIgnoreExtension = async () => {
-      if (settings) {
-          const newSettings = { ...settings, ignore_extension_missing: true };
-          await invoke("save_settings", { settings: newSettings });
-          setSettings(newSettings); 
-          setShowExtensionDialog(false);
-      }
+    if (settings) {
+      const newSettings = { ...settings, ignore_extension_missing: true };
+      await invoke("save_settings", { settings: newSettings });
+      setSettings(newSettings);
+      setShowExtensionDialog(false);
+    }
   };
 
 
@@ -566,14 +573,14 @@ export default function App() {
   useEffect(() => {
     // 1. Peers
     invoke<Record<string, Peer>>("get_peers").then((peerMap) => {
-        setPeers(Object.values(peerMap));
+      setPeers(Object.values(peerMap));
     });
-    
+
     // 2. Metadata
     invoke<string>("get_network_name").then(name => setMyNetworkName(name));
     invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
     invoke<string>("get_hostname").then(h => setMyHostname(h));
-    
+
     // 3. Settings
     fetchSettings();
   }, []);
@@ -590,9 +597,9 @@ export default function App() {
     const unlistenPeer = listen<Peer>("peer-update", (event) => {
       // If we just paired (trusted), refresh metadata
       if (event.payload.is_trusted) {
-          invoke<string>("get_network_name").then(name => setMyNetworkName(name));
-          invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
-          setJoinOpen(false); // Close modal on success
+        invoke<string>("get_network_name").then(name => setMyNetworkName(name));
+        invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
+        setJoinOpen(false); // Close modal on success
       }
 
       setPeers((prev) => {
@@ -604,111 +611,112 @@ export default function App() {
 
     // Listen for Monitor Updates (When Auto-Send is OFF)
     const unlistenMonitor = listen<any>("clipboard-monitor-update", (event) => {
-        console.log("Monitor Update (Auto-Send OFF):", event.payload);
-        const p = event.payload;
-        // This event ONLY comes from local backend monitoring
-        
-        const newItem: HistoryItem = {
-            id: p.id,
-            origin: "local",
-            device: "Me", // It's always me for monitor updates
-            sender_id: p.sender_id,
-            ts: p.timestamp,
-            text: p.text || "",
-            files: p.files
-        };
+      console.log("Monitor Update (Auto-Send OFF):", event.payload);
+      const p = event.payload;
+      // This event ONLY comes from local backend monitoring
 
-        // Update Local State but NOT 'lastSentClipboard'
-        if (newItem.text) {
-             setLocalClipboard(newItem.text);
-             // Do NOT set lastSentClipboard here, because we haven't sent it yet!
-             // This discrepancy (local > lastSent) will trigger the FAB.
-        }
+      const newItem: HistoryItem = {
+        id: p.id,
+        origin: "local",
+        device: "Me", // It's always me for monitor updates
+        sender_id: p.sender_id,
+        ts: p.timestamp,
+        text: p.text || "",
+        files: p.files
+      };
+
+      // Update Local State but NOT 'lastSentClipboard'
+      if (newItem.text) {
+        setLocalClipboard(newItem.text);
+        // Do NOT set lastSentClipboard here, because we haven't sent it yet!
+        // This discrepancy (local > lastSent) will trigger the FAB.
+      }
     });
 
     // Listen for Clipboard Changes
     const unlistenClipboard = listen<any>("clipboard-change", (event) => {
       console.log("Clipboard Changed Event:", event.payload);
-      
+
       const p = event.payload;
       const isLocal = p.sender === "self" || p.sender === myHostname;
-      
+
       // Construct History Item immediately
       const newItem: HistoryItem = {
-          id: p.id,
-          origin: isLocal ? "local" : "remote",
-          device: p.sender,
-          sender_id: p.sender_id,
-          ts: p.timestamp,
-          text: p.text || "",
-          files: p.files
+        id: p.id,
+        origin: isLocal ? "local" : "remote",
+        device: p.sender,
+        sender_id: p.sender_id,
+        ts: p.timestamp,
+        text: p.text || "",
+        files: p.files
       };
 
       // Update Local Clipboard State
       if (isLocal) {
-           // If it has text, update local view
-           if (newItem.text) setLocalClipboard(newItem.text);
-           // If local change event -> it is committed (Auto or Manual).
-           if (newItem.text) setLastSentClipboard(newItem.text);
+        // If it has text, update local view
+        if (newItem.text) setLocalClipboard(newItem.text);
+        // If local change event -> it is committed (Auto or Manual).
+        if (newItem.text) setLastSentClipboard(newItem.text);
       } else {
-           // Remote sender
-           if (newItem.text) {
-               setLocalClipboard(newItem.text);
-               setLastReceivedClipboard(newItem.text);
-           }
+        // Remote sender
+        if (newItem.text) {
+          setLocalClipboard(newItem.text);
+          setLastReceivedClipboard(newItem.text);
+        }
       }
-      
+
       // Update History
       setClipboardHistory((prev) => {
-          // Dedupe by ID
-          if (prev.find(i => i.id === newItem.id)) return prev;
-          return [newItem, ...prev].slice(0, 50);
+        // Dedupe by ID
+        if (prev.find(i => i.id === newItem.id)) return prev;
+        return [newItem, ...prev].slice(0, 50);
       });
     });
 
     const unlistenPending = listen<{ id: string, text: string, timestamp: number, sender: string }>("clipboard-pending", (event) => {
-        setPendingReceive(event.payload);
-        // Maybe open modal automatically? Or just show FAB?
-        // User requested FAB.
+      setPendingReceive(event.payload);
+      // Maybe open modal automatically? Or just show FAB?
+      // User requested FAB.
     });
 
     const unlistenDelete = listen<string>("history-delete", (event) => {
-        const idToDelete = event.payload;
-        setClipboardHistory((prev) => prev.filter(i => i.id !== idToDelete));
+      const idToDelete = event.payload;
+      setClipboardHistory((prev) => prev.filter(i => i.id !== idToDelete));
     });
 
     const unlistenRemove = listen<string>("peer-remove", (event) => {
-        setPeers((prev) => prev.filter(p => p.id !== event.payload));
+      setPeers((prev) => prev.filter(p => p.id !== event.payload));
     });
 
     const unlistenReset = listen("network-reset", () => {
-        // Reload app to reset state
-        window.location.reload();
+      // Reload app to reset state
+      window.location.reload();
     });
-    
+
     const unlistenUpdate = listen("network-update", () => {
-        invoke<string>("get_network_name").then(name => setMyNetworkName(name));
-        invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
+      invoke<string>("get_network_name").then(name => setMyNetworkName(name));
+      invoke<string>("get_network_pin").then(pin => setNetworkPin(pin));
     });
 
     const unlistenPairingFailed = listen<string>("pairing-failed", (event) => {
-        // Show error in the join modal
-        setJoinError(event.payload);
-        setJoinBusy(false);
+      // Show error in the join modal
+      setJoinError(event.payload);
+      setJoinBusy(false);
     });
 
 
 
 
 
-    // Linux (Custom notify-rust)
+    // Linux (Custom notify-rust) & macOS (user-notify)
     const unlistenNotification = listen("notification-clicked", (event) => {
-        console.log("Custom notification clicked event:", event);
-        handleNotificationClick();
+      console.log("Custom notification clicked event:", event);
+      logToBackend("Frontend received notification-clicked event:", event);
+      handleNotificationClick();
     });
 
     const unlistenSettingsChanged = listen<AppSettings>("settings-changed", (event) => {
-        setIsAutoSend(event.payload.auto_send);
+      setIsAutoSend(event.payload.auto_send);
     });
 
     return () => {
@@ -730,52 +738,52 @@ export default function App() {
   /* Handlers */
 
   const startJoinFlow = (networkName: string, targetPeerId: string) => {
-      setJoinTarget(networkName);
-      setPairingPeerId(targetPeerId);
-      setJoinPin("");
-      setJoinError("");
-      setJoinBusy(false);
-      setJoinOpen(true);
+    setJoinTarget(networkName);
+    setPairingPeerId(targetPeerId);
+    setJoinPin("");
+    setJoinError("");
+    setJoinBusy(false);
+    setJoinOpen(true);
   };
 
   const submitJoin = async () => {
-      if (!joinPin || !pairingPeerId) return;
-      setJoinBusy(true);
-      setJoinError("");
-      
-      try {
-          await invoke("start_pairing", { peerId: pairingPeerId, pin: joinPin });
-          // Note: Backend handles the rest. We wait for peer-update event to close modal.
-          // Timeout safety
-          setTimeout(() => {
-              setJoinBusy(false);
-          }, 5000);
-      } catch (e) {
-          setJoinError(String(e));
-          setJoinBusy(false);
-      }
+    if (!joinPin || !pairingPeerId) return;
+    setJoinBusy(true);
+    setJoinError("");
+
+    try {
+      await invoke("start_pairing", { peerId: pairingPeerId, pin: joinPin });
+      // Note: Backend handles the rest. We wait for peer-update event to close modal.
+      // Timeout safety
+      setTimeout(() => {
+        setJoinBusy(false);
+      }, 5000);
+    } catch (e) {
+      setJoinError(String(e));
+      setJoinBusy(false);
+    }
   };
 
   const handleViewChange = (view: View) => {
-      if (view === activeView) return;
-      
-      if (unsavedChanges && activeView === "settings") {
-          setDialog({
-              open: true,
-              title: "Unsaved Changes",
-              description: "You have unsaved changes in Settings. Switching tabs will discard them. Are you sure?",
-              type: "danger",
-              confirmLabel: "Discard Changes",
-              onConfirm: () => {
-                  setUnsavedChanges(false);
-                  setActiveView(view);
-                  setDialog(d => ({ ...d, open: false }));
-              },
-              onCancel: () => setDialog(d => ({ ...d, open: false }))
-          });
-      } else {
+    if (view === activeView) return;
+
+    if (unsavedChanges && activeView === "settings") {
+      setDialog({
+        open: true,
+        title: "Unsaved Changes",
+        description: "You have unsaved changes in Settings. Switching tabs will discard them. Are you sure?",
+        type: "danger",
+        confirmLabel: "Discard Changes",
+        onConfirm: () => {
+          setUnsavedChanges(false);
           setActiveView(view);
-      }
+          setDialog(d => ({ ...d, open: false }));
+        },
+        onCancel: () => setDialog(d => ({ ...d, open: false }))
+      });
+    } else {
+      setActiveView(view);
+    }
   };
 
 
@@ -783,35 +791,35 @@ export default function App() {
   const confirmLeaveNetwork = async () => {
     setLeaveOpen(false);
     try {
-        await invoke("leave_network");
+      await invoke("leave_network");
     } catch (e) {
-        alert("Failed to leave network: " + e);
+      alert("Failed to leave network: " + e);
     }
   };
 
   const deletePeer = async (id: string) => {
     if (!confirm("Kick/Ban this device from the network?")) return;
     try {
-        await invoke("delete_peer", { peerId: id });
-        setPeers((prev) => prev.filter(p => p.id !== id));
+      await invoke("delete_peer", { peerId: id });
+      setPeers((prev) => prev.filter(p => p.id !== id));
     } catch (e) {
-        alert("Failed to delete peer: " + String(e));
+      alert("Failed to delete peer: " + String(e));
     }
   };
 
 
   const submitManualPeer = async () => {
-      if (!manualIp) return;
-      setManualBusy(true);
-      try {
-          await invoke("add_manual_peer", { ip: manualIp });
-          setAddManualOpen(false);
-          setManualIp("");
-      } catch (e) {
-          alert("Failed: " + e);
-      } finally {
-          setManualBusy(false);
-      }
+    if (!manualIp) return;
+    setManualBusy(true);
+    try {
+      await invoke("add_manual_peer", { ip: manualIp });
+      setAddManualOpen(false);
+      setManualIp("");
+    } catch (e) {
+      alert("Failed: " + e);
+    } finally {
+      setManualBusy(false);
+    }
   };
 
   /* Derived State */
@@ -822,26 +830,26 @@ export default function App() {
   // Group untrusted by network name
   const nearbyNetworks: NearbyNetwork[] = [];
   const grouped: Record<string, Peer[]> = {};
-  
-  untrustedPeers.forEach(p => {
-      // Skip own network
-      // if (p.network_name === myNetworkName) return;
 
-      const name = p.network_name || "Unidentified";
-      if (!grouped[name]) grouped[name] = [];
-      grouped[name].push(p);
+  untrustedPeers.forEach(p => {
+    // Skip own network
+    // if (p.network_name === myNetworkName) return;
+
+    const name = p.network_name || "Unidentified";
+    if (!grouped[name]) grouped[name] = [];
+    grouped[name].push(p);
   });
 
   Object.entries(grouped).forEach(([name, devices]) => {
-      nearbyNetworks.push({
-          networkName: name,
-          devices: devices.map(d => ({ 
-              id: d.id, 
-              hostname: d.hostname,
-              // Map backend 'last_seen' to status? current backend removes ancient peers so assume online if present
-              status: "online" 
-          }))
-      });
+    nearbyNetworks.push({
+      networkName: name,
+      devices: devices.map(d => ({
+        id: d.id,
+        hostname: d.hostname,
+        // Map backend 'last_seen' to status? current backend removes ancient peers so assume online if present
+        status: "online"
+      }))
+    });
   });
 
   /* Theme Setup */
@@ -850,9 +858,9 @@ export default function App() {
 
   return (
     <div className={clsx(rootThemeClass, "min-h-screen w-full bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.10),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(99,102,241,0.10),transparent_50%)] dark:bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.12),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(244,63,94,0.10),transparent_50%)] md:h-screen md:overflow-hidden")}>
-      
+
       <Dialog {...dialog} />
-      
+
       {/* Connection Failure Modal */}
       {isConnectionFailed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -874,8 +882,8 @@ export default function App() {
                 Exit Application
               </Button>
               <Button variant="ghost" onClick={() => {
-                  setIsConnectionFailed(false);
-                  setConnectionCheckDismissed(true);
+                setIsConnectionFailed(false);
+                setConnectionCheckDismissed(true);
               }}>
                 Do nothing
               </Button>
@@ -883,18 +891,18 @@ export default function App() {
           </div>
         </div>
       )}
-      
+
       {/* GNOME Extension Dialog */}
       {showExtensionDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <Card className="max-w-md w-full p-6 space-y-4 shadow-2xl border-indigo-500/20">
             <div className="flex items-center gap-3 text-indigo-500">
-               <div className="p-3 rounded-full bg-indigo-500/10">
-                 <Puzzle className="w-8 h-8" />
-               </div>
-               <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Enable GNOME Integration</h2>
+              <div className="p-3 rounded-full bg-indigo-500/10">
+                <Puzzle className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Enable GNOME Integration</h2>
             </div>
-            
+
             <p className="text-slate-600 dark:text-zinc-400">
               It looks like you are running GNOME, but the <strong>ClusterCut Extension</strong> is not installed.
             </p>
@@ -903,30 +911,30 @@ export default function App() {
             </p>
 
             <div className="flex items-center space-x-2 pt-2">
-                 <input 
-                    type="checkbox" 
-                    id="dontAsk" 
-                    className="w-4 h-4 rounded border-slate-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 bg-transparent"
-                    onChange={(e) => {
-                        if (e.target.checked) {
-                            handleIgnoreExtension();
-                        }
-                    }}
-                 />
-                 <label htmlFor="dontAsk" className="text-sm text-slate-500 dark:text-zinc-500 select-none cursor-pointer">
-                    Don't ask me again
-                 </label>
+              <input
+                type="checkbox"
+                id="dontAsk"
+                className="w-4 h-4 rounded border-slate-300 dark:border-zinc-700 text-indigo-600 focus:ring-indigo-500 bg-transparent"
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    handleIgnoreExtension();
+                  }
+                }}
+              />
+              <label htmlFor="dontAsk" className="text-sm text-slate-500 dark:text-zinc-500 select-none cursor-pointer">
+                Don't ask me again
+              </label>
             </div>
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button 
-                variant="default" 
+              <Button
+                variant="default"
                 onClick={() => setShowExtensionDialog(false)}
               >
                 No Thanks
               </Button>
-              <Button 
-                variant="primary" 
+              <Button
+                variant="primary"
                 onClick={handleInstallExtension}
               >
                 Install Extension
@@ -945,7 +953,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <img src="/logo.png" alt="Logo" className="h-10 w-10 drop-shadow-sm" />
             <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                ClusterCut
+              ClusterCut
             </h1>
           </div>
 
@@ -955,104 +963,104 @@ export default function App() {
               active={activeView === "devices"}
               onClick={() => handleViewChange("devices")}
             >
-               <Monitor className="h-5 w-5" />
+              <Monitor className="h-5 w-5" />
             </IconButton>
-            
+
             <IconButton
               label="History"
               active={activeView === "history"}
               onClick={() => handleViewChange("history")}
             >
-               <History className="h-5 w-5" />
+              <History className="h-5 w-5" />
             </IconButton>
-            
+
             <IconButton
               label="Settings"
               active={activeView === "settings"}
               onClick={() => handleViewChange("settings")}
             >
-               <Settings className="h-5 w-5" />
+              <Settings className="h-5 w-5" />
             </IconButton>
-            
+
             <div className="mx-2 h-6 w-px bg-zinc-200 dark:bg-zinc-700" />
-             
-            <IconButton 
-                danger
-                onClick={() => setLeaveOpen(true)}
-                label="Leave Cluster"
+
+            <IconButton
+              danger
+              onClick={() => setLeaveOpen(true)}
+              label="Leave Cluster"
             >
-                <Unplug className="h-5 w-5" />
+              <Unplug className="h-5 w-5" />
             </IconButton>
-            
-            <IconButton 
-                onClick={() => invoke("exit_app")}
-                label="Exit App"
+
+            <IconButton
+              onClick={() => invoke("exit_app")}
+              label="Exit App"
             >
-                <LogOut className="h-5 w-5" />
+              <LogOut className="h-5 w-5" />
             </IconButton>
           </div>
         </header>
 
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-hidden rounded-3xl border border-zinc-200 bg-white/50 shadow-sm backdrop-blur-xl dark:border-white/5 dark:bg-zinc-900/50">
-           <div className="no-drag h-full">
-             {activeView === "devices" ? (
-               <DevicesView
-                 isConnected={isConnected}
-                 myNetworkName={myNetworkName}
-                 myHostname={myHostname}
-                 networkPin={networkPin}
-                 peers={myPeers}
-                 nearby={nearbyNetworks}
-                 expandedNetworks={expandedNetworks}
-                 toggleNetwork={toggleNetwork}
-                 onJoin={(netName) => {
-                     const group = grouped[netName];
-                     if (group && group.length > 0) {
-                         startJoinFlow(netName, group[0].id);
-                     }
-                 }}
-                 onDeletePeer={deletePeer}
-                 onAddManual={() => setAddManualOpen(true)}
-               />
-             ) : activeView === "history" ? (
-               <HistoryView items={clipboardHistory} />
-             ) : (
-               <SettingsView onSettingsRefreshed={fetchSettings} />
-             )}
-           </div>
+          <div className="no-drag h-full">
+            {activeView === "devices" ? (
+              <DevicesView
+                isConnected={isConnected}
+                myNetworkName={myNetworkName}
+                myHostname={myHostname}
+                networkPin={networkPin}
+                peers={myPeers}
+                nearby={nearbyNetworks}
+                expandedNetworks={expandedNetworks}
+                toggleNetwork={toggleNetwork}
+                onJoin={(netName) => {
+                  const group = grouped[netName];
+                  if (group && group.length > 0) {
+                    startJoinFlow(netName, group[0].id);
+                  }
+                }}
+                onDeletePeer={deletePeer}
+                onAddManual={() => setAddManualOpen(true)}
+              />
+            ) : activeView === "history" ? (
+              <HistoryView items={clipboardHistory} />
+            ) : (
+              <SettingsView onSettingsRefreshed={fetchSettings} />
+            )}
+          </div>
         </div>
 
-        <ManualSyncFAB 
-            hasPendingSend={hasPendingSend}
-            hasPendingReceive={hasPendingReceive}
-            onClick={() => setManualSyncOpen(true)}
+        <ManualSyncFAB
+          hasPendingSend={hasPendingSend}
+          hasPendingReceive={hasPendingReceive}
+          onClick={() => setManualSyncOpen(true)}
         />
-        
-        <ManualSyncModal 
-            open={manualSyncOpen}
-            onClose={() => setManualSyncOpen(false)}
-            localContent={localClipboard}
-            remoteContent={pendingReceive}
-            onSend={async () => {
-                try {
-                    await invoke("send_clipboard", { text: localClipboard });
-                    // Store strict equality check for "Last Sent" to avoid re-triggering pending send
-                    setLastSentClipboard(localClipboard);
-                    setManualSyncOpen(false);
-                } catch (e) {
-                    alert("Failed to send: " + e);
-                }
-            }}
-            onReceive={async () => {
-                try {
-                    await invoke("confirm_pending_clipboard");
-                    setPendingReceive(null);
-                    setManualSyncOpen(false);
-                } catch (e) {
-                    alert("Failed to confirm: " + e);
-                }
-            }}
+
+        <ManualSyncModal
+          open={manualSyncOpen}
+          onClose={() => setManualSyncOpen(false)}
+          localContent={localClipboard}
+          remoteContent={pendingReceive}
+          onSend={async () => {
+            try {
+              await invoke("send_clipboard", { text: localClipboard });
+              // Store strict equality check for "Last Sent" to avoid re-triggering pending send
+              setLastSentClipboard(localClipboard);
+              setManualSyncOpen(false);
+            } catch (e) {
+              alert("Failed to send: " + e);
+            }
+          }}
+          onReceive={async () => {
+            try {
+              await invoke("confirm_pending_clipboard");
+              setPendingReceive(null);
+              setManualSyncOpen(false);
+            } catch (e) {
+              alert("Failed to confirm: " + e);
+            }
+          }}
         />
 
         {/* Modals */}
@@ -1077,16 +1085,16 @@ export default function App() {
               <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster PIN</div>
               <input
                 className={clsx(
-                    "mt-2 h-12 w-full rounded-2xl border bg-white px-4 font-mono text-lg tracking-[0.25em] text-zinc-900 outline-none focus:ring-2 dark:bg-zinc-950 dark:text-zinc-50",
-                    joinError
-                        ? "border-rose-500 focus:ring-rose-500/40 dark:border-rose-500/50"
-                        : "border-zinc-900/10 focus:ring-emerald-500/40 dark:border-white/10"
+                  "mt-2 h-12 w-full rounded-2xl border bg-white px-4 font-mono text-lg tracking-[0.25em] text-zinc-900 outline-none focus:ring-2 dark:bg-zinc-950 dark:text-zinc-50",
+                  joinError
+                    ? "border-rose-500 focus:ring-rose-500/40 dark:border-rose-500/50"
+                    : "border-zinc-900/10 focus:ring-emerald-500/40 dark:border-white/10"
                 )}
                 placeholder="••••••"
                 value={joinPin}
                 onChange={(e) => {
-                    setJoinPin(e.target.value.trim());
-                    setJoinError("");
+                  setJoinPin(e.target.value.trim());
+                  setJoinError("");
                 }}
                 onKeyDown={(e) => e.key === "Enter" && submitJoin()}
                 autoFocus
@@ -1096,9 +1104,9 @@ export default function App() {
                 spellCheck={false}
               />
               {joinError && (
-                  <div className="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">
-                      {joinError}
-                  </div>
+                <div className="mt-2 text-sm font-medium text-rose-600 dark:text-rose-400">
+                  {joinError}
+                </div>
               )}
             </div>
           </div>
@@ -1122,7 +1130,7 @@ export default function App() {
         >
           <div className="space-y-3">
             <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-800 dark:text-rose-200">
-               Action is irreversible. You will need a PIN to rejoin.
+              Action is irreversible. You will need a PIN to rejoin.
             </div>
           </div>
         </Modal>
@@ -1144,30 +1152,30 @@ export default function App() {
           }
         >
           <div className="space-y-3">
-             <div className="rounded-2xl border border-zinc-900/10 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/5">
-               <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">IP Address / CIDR</div>
-               <input
-                 className="mt-2 h-12 w-full rounded-2xl border border-zinc-900/10 bg-white px-4 text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
-                 placeholder="e.g. 10.8.0.5 or 192.168.1.0/24"
-                 value={manualIp}
-                 onChange={(e) => setManualIp(e.target.value)}
-                 autoFocus
-                 onKeyDown={(e) => e.key === "Enter" && submitManualPeer()}
-               />
-               <div className="mt-2 text-xs text-zinc-500">
-                  Target must be running ClusterCut on the default port (4654).
-               </div>
-             </div>
+            <div className="rounded-2xl border border-zinc-900/10 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">IP Address / CIDR</div>
+              <input
+                className="mt-2 h-12 w-full rounded-2xl border border-zinc-900/10 bg-white px-4 text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
+                placeholder="e.g. 10.8.0.5 or 192.168.1.0/24"
+                value={manualIp}
+                onChange={(e) => setManualIp(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => e.key === "Enter" && submitManualPeer()}
+              />
+              <div className="mt-2 text-xs text-zinc-500">
+                Target must be running ClusterCut on the default port (4654).
+              </div>
+            </div>
           </div>
         </Modal>
       </div>
 
       {/* Reconnecting Overlay */}
       {settings && (settings.cluster_mode === "provisioned" || hasManualPeers) && peers.length === 0 && !isConnectionFailed && !connectionCheckDismissed && (
-          <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm dark:bg-zinc-950/80">
-              <Loader2 className="h-12 w-12 animate-spin text-indigo-500 mb-4" />
-              <div className="text-xl font-medium text-zinc-900 dark:text-zinc-50">Connecting to remote cluster...</div>
-          </div>
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm dark:bg-zinc-950/80">
+          <Loader2 className="h-12 w-12 animate-spin text-indigo-500 mb-4" />
+          <div className="text-xl font-medium text-zinc-900 dark:text-zinc-50">Connecting to remote cluster...</div>
+        </div>
       )}
     </div>
   );
@@ -1232,7 +1240,7 @@ function DevicesView({
             mono
             action={
               <IconButton label="Copy PIN" onClick={() => navigator.clipboard.writeText(networkPin)} variant="default">
-                 <Copy className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
+                <Copy className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />
               </IconButton>
             }
           />
@@ -1241,7 +1249,7 @@ function DevicesView({
 
       {/* Main Content Area - Scrollable columns */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 md:grid md:grid-cols-2">
-        
+
         {/* Trusted peers */}
         <Card className="flex flex-col overflow-hidden p-0">
           <div className="shrink-0 p-4 pb-2">
@@ -1271,7 +1279,7 @@ function DevicesView({
                   >
                     {/* Online Badge - Absolute Top Right with some padding */}
                     <div className="absolute right-2 top-2">
-                       <Badge tone="good">online</Badge>
+                      <Badge tone="good">online</Badge>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -1299,67 +1307,68 @@ function DevicesView({
         {/* Nearby networks */}
         <Card className="flex flex-col overflow-hidden p-0">
           <div className="shrink-0 p-4 pb-2">
-             <SectionHeader
-                icon={<Unlock className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
-                title="Nearby Clusters"
-                subtitle="Discovered clusters."
-                right={
-                  <Button size="sm" iconLeft={<PlusCircle className="h-4 w-4" />} onClick={onAddManual}>
-                    Add Remote
-                  </Button>
-                }
-              />
+            <SectionHeader
+              icon={<Unlock className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+              title="Nearby Clusters"
+              subtitle="Discovered clusters."
+              right={
+                <Button size="sm" iconLeft={<PlusCircle className="h-4 w-4" />} onClick={onAddManual}>
+                  Add Remote
+                </Button>
+              }
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 pb-4">
-              {nearby.length === 0 ? (
-                 <div className="mt-2 text-sm text-zinc-500 p-2 text-center italic">
-                    Scanning for nearby devices...
-                 </div>
-              ) : (
-                <div className="mt-2 space-y-3">
-                  {nearby.map((n) => {
-                    const isExpanded = expandedNetworks.has(n.networkName);
-                    return (
+            {nearby.length === 0 ? (
+              <div className="mt-2 text-sm text-zinc-500 p-2 text-center italic">
+                Scanning for nearby devices...
+              </div>
+            ) : (
+              <div className="mt-2 space-y-3">
+                {nearby.map((n) => {
+                  const isExpanded = expandedNetworks.has(n.networkName);
+                  return (
                     <div key={n.networkName} className="rounded-2xl border border-zinc-900/10 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
                       <div className="flex flex-col gap-3">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={() => toggleNetwork(n.networkName)}
-                                    className="flex h-6 w-6 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
-                                >
-                                   {isExpanded ? <ChevronDown className="h-4 w-4"/> : <ChevronRight className="h-4 w-4"/>}
-                                </button>
-                                <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{n.networkName}</div>
-                            </div>
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              iconLeft={<PlusCircle className="h-4 w-4" />}
-                              onClick={() => onJoin(n.networkName)}
-                              className="no-drag"
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => toggleNetwork(n.networkName)}
+                              className="flex h-6 w-6 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
                             >
-                              Join
-                            </Button>
+                              {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                            </button>
+                            <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{n.networkName}</div>
+                          </div>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            iconLeft={<PlusCircle className="h-4 w-4" />}
+                            onClick={() => onJoin(n.networkName)}
+                            className="no-drag"
+                          >
+                            Join
+                          </Button>
                         </div>
                         {isExpanded && (
-                            <div className="flex flex-col gap-2 pl-8">
-                              {n.devices.map((d) => (
-                                <div key={d.id} className="flex items-center gap-2 rounded-xl bg-black/5 p-2 dark:bg-white/5">
-                                    <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                                    <span className="truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                                       {d.hostname || d.id}
-                                    </span>
-                                </div>
-                              ))}
-                            </div>
+                          <div className="flex flex-col gap-2 pl-8">
+                            {n.devices.map((d) => (
+                              <div key={d.id} className="flex items-center gap-2 rounded-xl bg-black/5 p-2 dark:bg-white/5">
+                                <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                                <span className="truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                                  {d.hostname || d.id}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     </div>
-                  );})}
-                </div>
-              )}
+                  );
+                })}
+              </div>
+            )}
           </div>
         </Card>
       </div>
@@ -1374,87 +1383,87 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
   const [downloadedFiles, setDownloadedFiles] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
-      invoke<string>("get_hostname").then(setMyHostname);
-      
-      const unlistenProgress = listen<{id: string, fileName: string, total: number, transferred: number}>("file-progress", (e) => {
-         // Update state
-         setProgress(p => ({ 
-             ...p, 
-             [e.payload.id]: { transferred: e.payload.transferred, total: e.payload.total } 
-         }));
+    invoke<string>("get_hostname").then(setMyHostname);
 
-         // If complete, remove after delay
-         if (e.payload.transferred >= e.payload.total) {
-             setTimeout(() => {
-                  setProgress(p => { 
-                      const n = { ...p }; 
-                      delete n[e.payload.id]; 
-                      return n; 
-                  });
-             }, 2000); // 2 seconds delay to see "100%"
-         }
+    const unlistenProgress = listen<{ id: string, fileName: string, total: number, transferred: number }>("file-progress", (e) => {
+      // Update state
+      setProgress(p => ({
+        ...p,
+        [e.payload.id]: { transferred: e.payload.transferred, total: e.payload.total }
+      }));
+
+      // If complete, remove after delay
+      if (e.payload.transferred >= e.payload.total) {
+        setTimeout(() => {
+          setProgress(p => {
+            const n = { ...p };
+            delete n[e.payload.id];
+            return n;
+          });
+        }, 2000); // 2 seconds delay to see "100%"
+      }
+    });
+
+    const unlistenReceived = listen<{ id: string, path: string }>("file-received", (e) => {
+      setDownloadedFiles(prev => {
+        const existing = prev[e.payload.id] || [];
+        if (existing.includes(e.payload.path)) return prev;
+        return { ...prev, [e.payload.id]: [...existing, e.payload.path] };
       });
+    });
 
-      const unlistenReceived = listen<{id: string, path: string}>("file-received", (e) => {
-           setDownloadedFiles(prev => {
-               const existing = prev[e.payload.id] || [];
-               if (existing.includes(e.payload.path)) return prev;
-               return { ...prev, [e.payload.id]: [...existing, e.payload.path] };
-           });
-      });
-
-      return () => { 
-          unlistenProgress.then(u => u()); 
-          unlistenReceived.then(u => u());
-      };
+    return () => {
+      unlistenProgress.then(u => u());
+      unlistenReceived.then(u => u());
+    };
   }, []);
 
   const handleSend = async (text: string) => {
-      try {
-          await invoke("send_clipboard", { text });
-          // Note: The backend will emit `clipboard-change` which updates list
-      } catch (e) {
-          console.error("Failed to send:", e);
-          alert("Failed to send: " + e);
-      }
+    try {
+      await invoke("send_clipboard", { text });
+      // Note: The backend will emit `clipboard-change` which updates list
+    } catch (e) {
+      console.error("Failed to send:", e);
+      alert("Failed to send: " + e);
+    }
   };
 
   const handleLocalCopy = async (text: string) => {
-     try {
-         await invoke("set_local_clipboard", { text });
-     } catch (e) {
-         console.error("Failed to set local clipboard:", e);
-     }
+    try {
+      await invoke("set_local_clipboard", { text });
+    } catch (e) {
+      console.error("Failed to set local clipboard:", e);
+    }
   };
 
   const handleLocalCopyFiles = async (paths: string[]) => {
-      try {
-          await invoke("set_local_clipboard_files", { paths });
-      } catch (e) {
-          console.error("Failed to set local clipboard files:", e);
-          alert("Failed to set clipboard: " + e);
-      }
+    try {
+      await invoke("set_local_clipboard_files", { paths });
+    } catch (e) {
+      console.error("Failed to set local clipboard files:", e);
+      alert("Failed to set clipboard: " + e);
+    }
   };
 
   const handleDelete = async (id: string) => {
-      try {
-           await invoke("delete_history_item", { id });
-           // Optimistic Update is fine
-      } catch (e) {
-           console.error("Failed to delete:", e);
-      }
+    try {
+      await invoke("delete_history_item", { id });
+      // Optimistic Update is fine
+    } catch (e) {
+      console.error("Failed to delete:", e);
+    }
   };
 
-  const handleDownloadAll = async (fileId: string, files: {name: string}[], peerId: string) => {
-       try {
-           for(let i=0; i<files.length; i++) {
-                setProgress(p => ({ ...p, [fileId]: { transferred: 0, total: 100 } })); 
-                await invoke("request_file", { fileId, fileIndex: i, peerId });
-           }
-       } catch (e) {
-           alert("Download failed: " + e);
-           setProgress(p => { const n = {...p}; delete n[fileId]; return n; });
-       }
+  const handleDownloadAll = async (fileId: string, files: { name: string }[], peerId: string) => {
+    try {
+      for (let i = 0; i < files.length; i++) {
+        setProgress(p => ({ ...p, [fileId]: { transferred: 0, total: 100 } }));
+        await invoke("request_file", { fileId, fileIndex: i, peerId });
+      }
+    } catch (e) {
+      alert("Download failed: " + e);
+      setProgress(p => { const n = { ...p }; delete n[fileId]; return n; });
+    }
   };
 
   return (
@@ -1468,150 +1477,151 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
 
         <div className="mt-4 space-y-2">
           {items.map((it) => {
-             const isMe = it.device === myHostname || it.device === "localhost" || it.origin === "local"; 
-             // Logic check: "origin" in item type is mostly placeholder now if we trust device name.
-             // If device name matches myHostname, it is "Sent" (Arrow Up).
-             // Else "Received" (Arrow Down).
-             
-             return (
-            <div
-              key={it.id}
-              className="rounded-2xl border border-zinc-900/10 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5"
-            >
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={isMe ? "neutral" : "good"}>
-                      {isMe ? (
-                        <>
-                          <ArrowUp className="h-3.5 w-3.5" /> Sent
-                        </>
-                      ) : (
-                        <>
-                          <ArrowDown className="h-3.5 w-3.5" /> {it.device}
-                        </>
-                      )}
-                    </Badge>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">{timeAgo(it.ts)}</span>
-                  </div>
-                  {it.text && <div className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-zinc-900 dark:text-zinc-50">{it.text}</div>}
-                  
-                  {it.files && it.files.length > 0 && (
+            const isMe = it.device === myHostname || it.device === "localhost" || it.origin === "local";
+            // Logic check: "origin" in item type is mostly placeholder now if we trust device name.
+            // If device name matches myHostname, it is "Sent" (Arrow Up).
+            // Else "Received" (Arrow Down).
+
+            return (
+              <div
+                key={it.id}
+                className="rounded-2xl border border-zinc-900/10 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={isMe ? "neutral" : "good"}>
+                        {isMe ? (
+                          <>
+                            <ArrowUp className="h-3.5 w-3.5" /> Sent
+                          </>
+                        ) : (
+                          <>
+                            <ArrowDown className="h-3.5 w-3.5" /> {it.device}
+                          </>
+                        )}
+                      </Badge>
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">{timeAgo(it.ts)}</span>
+                    </div>
+                    {it.text && <div className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-zinc-900 dark:text-zinc-50">{it.text}</div>}
+
+                    {it.files && it.files.length > 0 && (
                       <div className="mt-2 space-y-1">
-                          {it.files.map((f, idx) => (
-                              <div key={idx} className="flex flex-col gap-2 rounded-lg bg-zinc-50 p-2 text-sm dark:bg-zinc-800">
-                                  <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2 overflow-hidden">
-                                          <span className="truncate font-medium text-zinc-700 dark:text-zinc-300">{f.name}</span>
-                                          <span className="shrink-0 text-xs text-zinc-500">({formatBytes(f.size)})</span>
-                                      </div>
-                                  </div>
-                                  {progress[it.id] && (
-                                      <div className="w-full">
-                                          <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
-                                               <span>Downloading...</span>
-                                               <span>{Math.round((progress[it.id].transferred / progress[it.id].total) * 100)}%</span>
-                                          </div>
-                                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
-                                               <div 
-                                                  className="h-full bg-emerald-500 transition-all duration-300 ease-out"
-                                                  style={{ width: `${(progress[it.id].transferred / progress[it.id].total) * 100}%` }}
-                                               />
-                                          </div>
-                                      </div>
-                                  )}
+                        {it.files.map((f, idx) => (
+                          <div key={idx} className="flex flex-col gap-2 rounded-lg bg-zinc-50 p-2 text-sm dark:bg-zinc-800">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 overflow-hidden">
+                                <span className="truncate font-medium text-zinc-700 dark:text-zinc-300">{f.name}</span>
+                                <span className="shrink-0 text-xs text-zinc-500">({formatBytes(f.size)})</span>
                               </div>
-                          ))}
+                            </div>
+                            {progress[it.id] && (
+                              <div className="w-full">
+                                <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+                                  <span>Downloading...</span>
+                                  <span>{Math.round((progress[it.id].transferred / progress[it.id].total) * 100)}%</span>
+                                </div>
+                                <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                                  <div
+                                    className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                                    style={{ width: `${(progress[it.id].transferred / progress[it.id].total) * 100}%` }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                  )}
-                </div>
+                    )}
+                  </div>
 
                   <div className="flex items-center justify-end gap-2">
                     {it.text && it.text.length > 0 && (
-                        <IconButton label="Copy to Clipboard" onClick={() => handleLocalCopy(it.text)}>
-                            <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
-                        </IconButton>
+                      <IconButton label="Copy to Clipboard" onClick={() => handleLocalCopy(it.text)}>
+                        <Copy className="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+                      </IconButton>
                     )}
 
                     {!isMe && it.files && it.files.length > 0 && it.sender_id && (
-                        <>
-                            {downloadedFiles[it.id] && downloadedFiles[it.id].length >= it.files.length ? (
-                                <IconButton label="Copy Files" onClick={() => handleLocalCopyFiles(downloadedFiles[it.id])}>
-                                    <Copy className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                </IconButton>
-                            ) : (
-                                <IconButton label="Download All" onClick={() => handleDownloadAll(it.id, it.files!, it.sender_id!)}>
-                                    <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                                </IconButton>
-                            )}
-                        </>
+                      <>
+                        {downloadedFiles[it.id] && downloadedFiles[it.id].length >= it.files.length ? (
+                          <IconButton label="Copy Files" onClick={() => handleLocalCopyFiles(downloadedFiles[it.id])}>
+                            <Copy className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          </IconButton>
+                        ) : (
+                          <IconButton label="Download All" onClick={() => handleDownloadAll(it.id, it.files!, it.sender_id!)}>
+                            <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          </IconButton>
+                        )}
+                      </>
                     )}
-                    
+
                     <IconButton label="Send to Cluster" onClick={() => handleSend(it.text)}>
-                        <Send className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <Send className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                     </IconButton>
 
                     <IconButton label="Delete Everywhere" onClick={() => handleDelete(it.id)}>
-                        <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                      <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
                     </IconButton>
                   </div>
+                </div>
               </div>
-            </div>
-          );})}
+            );
+          })}
         </div>
       </Card>
     </div>
   );
 }
 
-function SettingsView({ 
-    onSettingsRefreshed
-}: { 
-    onSettingsRefreshed?: () => void;
+function SettingsView({
+  onSettingsRefreshed
+}: {
+  onSettingsRefreshed?: () => void;
 }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [initialSettings, setInitialSettings] = useState<AppSettings | null>(null); // For mode switch detection
-  
+
   const [networkName, setNetworkName] = useState("");
   const [networkPin, setNetworkPin] = useState("");
 
   const [provName, setProvName] = useState("");
   const [provPin, setProvPin] = useState("");
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [autostart, setAutostart] = useState(false);
 
   useEffect(() => {
-	// Check if backend handles state (Flatpak) or native fallback
+    // Check if backend handles state (Flatpak) or native fallback
     invoke<boolean | null>("get_autostart_state").then(res => {
-        if (res !== null) {
-            setAutostart(res);
-        } else {
-            isEnabled().then(setAutostart);
-        }
+      if (res !== null) {
+        setAutostart(res);
+      } else {
+        isEnabled().then(setAutostart);
+      }
     });
   }, []);
 
   const toggleAutostart = async () => {
-	try {
-        const handled = await invoke<boolean>("configure_autostart", { enable: !autostart });
-        if (handled) {
-            setAutostart(!autostart);
-            return;
-        }
+    try {
+      const handled = await invoke<boolean>("configure_autostart", { enable: !autostart });
+      if (handled) {
+        setAutostart(!autostart);
+        return;
+      }
 
-		if (autostart) {
-			await disable();
-			setAutostart(false);
-		} else {
-			await enable();
-			setAutostart(true);
-		}
-	} catch (e) {
-		console.error("Failed to toggle autostart:", e);
-		alert("Failed to toggle autostart: " + e);
-	}
+      if (autostart) {
+        await disable();
+        setAutostart(false);
+      } else {
+        await enable();
+        setAutostart(true);
+      }
+    } catch (e) {
+      console.error("Failed to toggle autostart:", e);
+      alert("Failed to toggle autostart: " + e);
+    }
   };
 
   // Load Settings
@@ -1625,21 +1635,21 @@ function SettingsView({
       setInitialSettings(JSON.parse(JSON.stringify(s)));
       setNetworkName(n);
       setNetworkPin(p);
-      setProvName(n); 
+      setProvName(n);
       setProvPin(p);
       setLoading(false);
     });
 
     const unlisten = listen<AppSettings>("settings-changed", (event) => {
-        setSettings(event.payload);
-        // We also need to update initialSettings to prevent auto-save loops if we consider this "saved"
-        // But auto-save effect depends on comparing `settings` to something? 
-        // No, auto-save effect runs when `settings` changes.
-        // If we update `settings` here, auto-save triggers. 
-        // Use a flag or ref to avoid re-saving what we just received?
-        // Actually, if settings match what backend has, saving it again is harmless (idempotent-ish).
-        // To be safe, we can update initialSettings too.
-        setInitialSettings(JSON.parse(JSON.stringify(event.payload)));
+      setSettings(event.payload);
+      // We also need to update initialSettings to prevent auto-save loops if we consider this "saved"
+      // But auto-save effect depends on comparing `settings` to something? 
+      // No, auto-save effect runs when `settings` changes.
+      // If we update `settings` here, auto-save triggers. 
+      // Use a flag or ref to avoid re-saving what we just received?
+      // Actually, if settings match what backend has, saving it again is harmless (idempotent-ish).
+      // To be safe, we can update initialSettings too.
+      setInitialSettings(JSON.parse(JSON.stringify(event.payload)));
     });
 
     return () => { unlisten.then(f => f()); };
@@ -1649,88 +1659,88 @@ function SettingsView({
   useEffect(() => {
     if (loading || !settings) return;
 
-    const savePayload = { 
-        settings: { ...settings }, 
-        provName, 
-        provPin,
-        currentMode: settings.cluster_mode
+    const savePayload = {
+      settings: { ...settings },
+      provName,
+      provPin,
+      currentMode: settings.cluster_mode
     };
 
     const save = async () => {
-        setSaving(true);
-        try {
-            // 1. Save General Settings
-            await invoke("save_settings", { settings: savePayload.settings });
-            
-            // 2. Handle Identity Logic
-            // If mode is Provisioned
-            if (savePayload.currentMode === "provisioned") {
-                // Validation
-                const isNameValid = !savePayload.provName.trim().includes(" ") && savePayload.provName.length > 0;
-                const isPinValid = savePayload.provPin.length >= 6;
-                // Check change against CURRENT ACTIVE network name/pin
-                // We use refs or closure state. Here we use state `networkName`.
-                // Note: networkName state might be stale in closure? 
-                // No, useEffect re-runs if deps change. `networkName` is not in deps.
-                // But `provName` IS in deps.
-                // We need `networkName` in deps? Or access it safely.
-                // Let's rely on the fact that if we successfully change identity, we update `networkName`.
-                
-                // Better approach for identity: 
-                // Only act if `provName/Pin` differs from `initialName/InitialPin` (which track active state).
-                
-                // Actually, let's use the local state directly, but we need to capture it.
-                // We'll rely on `networkName` being consistent with `initialName` usually.
-                
-                if (isNameValid && isPinValid) {
-                     // Check if changed from ACTIVE
-                     // functionality: If I change name, I want to apply it.
-                     // But I need to know what the current active is. `networkName`.
-                     // But I can't access `networkName` efficiently inside this closure if I don't dep it.
-                     // But if I dep it, I re-trigger. That's fine.
-                     
-                     // ACTUALLY: The `networkName` state is updated ONLY when we reload from backend.
-                     // So it is the "Active" one.
-                     if (savePayload.provName !== networkName || savePayload.provPin !== networkPin) {
-                         console.log("Applying new Identity...");
-                         await invoke("set_network_identity", { name: savePayload.provName, pin: savePayload.provPin });
-                         
-                         // Update Active State
-                         const n = savePayload.provName;
-                         const p = savePayload.provPin;
-                         setNetworkName(n);
-                         setNetworkPin(p);
-                     }
-                }
-            } 
-            // If mode switched FROM Provisioned TO Auto
-            else if (initialSettings?.cluster_mode === "provisioned" && savePayload.currentMode === "auto") {
-                console.log("Resetting Identity to Auto...");
-                await invoke("regenerate_network_identity");
-                const n = await invoke<string>("get_network_name");
-                const p = await invoke<string>("get_network_pin");
-                setNetworkName(n);
-                setNetworkPin(p);
-                setProvName(n);
-                setProvPin(p);
-            }
+      setSaving(true);
+      try {
+        // 1. Save General Settings
+        await invoke("save_settings", { settings: savePayload.settings });
 
-            // Sync Initial Settings to Current (to track mode changes)
-            setInitialSettings(JSON.parse(JSON.stringify(savePayload.settings)));
-            
-            if (onSettingsRefreshed) onSettingsRefreshed();
-            
-        } catch (e) {
-            console.error("Autosave failed", e);
-            // showMessage("Error", "Autosave failed", "neutral"); // Optional
-        } finally {
-            setSaving(false);
+        // 2. Handle Identity Logic
+        // If mode is Provisioned
+        if (savePayload.currentMode === "provisioned") {
+          // Validation
+          const isNameValid = !savePayload.provName.trim().includes(" ") && savePayload.provName.length > 0;
+          const isPinValid = savePayload.provPin.length >= 6;
+          // Check change against CURRENT ACTIVE network name/pin
+          // We use refs or closure state. Here we use state `networkName`.
+          // Note: networkName state might be stale in closure? 
+          // No, useEffect re-runs if deps change. `networkName` is not in deps.
+          // But `provName` IS in deps.
+          // We need `networkName` in deps? Or access it safely.
+          // Let's rely on the fact that if we successfully change identity, we update `networkName`.
+
+          // Better approach for identity: 
+          // Only act if `provName/Pin` differs from `initialName/InitialPin` (which track active state).
+
+          // Actually, let's use the local state directly, but we need to capture it.
+          // We'll rely on `networkName` being consistent with `initialName` usually.
+
+          if (isNameValid && isPinValid) {
+            // Check if changed from ACTIVE
+            // functionality: If I change name, I want to apply it.
+            // But I need to know what the current active is. `networkName`.
+            // But I can't access `networkName` efficiently inside this closure if I don't dep it.
+            // But if I dep it, I re-trigger. That's fine.
+
+            // ACTUALLY: The `networkName` state is updated ONLY when we reload from backend.
+            // So it is the "Active" one.
+            if (savePayload.provName !== networkName || savePayload.provPin !== networkPin) {
+              console.log("Applying new Identity...");
+              await invoke("set_network_identity", { name: savePayload.provName, pin: savePayload.provPin });
+
+              // Update Active State
+              const n = savePayload.provName;
+              const p = savePayload.provPin;
+              setNetworkName(n);
+              setNetworkPin(p);
+            }
+          }
         }
+        // If mode switched FROM Provisioned TO Auto
+        else if (initialSettings?.cluster_mode === "provisioned" && savePayload.currentMode === "auto") {
+          console.log("Resetting Identity to Auto...");
+          await invoke("regenerate_network_identity");
+          const n = await invoke<string>("get_network_name");
+          const p = await invoke<string>("get_network_pin");
+          setNetworkName(n);
+          setNetworkPin(p);
+          setProvName(n);
+          setProvPin(p);
+        }
+
+        // Sync Initial Settings to Current (to track mode changes)
+        setInitialSettings(JSON.parse(JSON.stringify(savePayload.settings)));
+
+        if (onSettingsRefreshed) onSettingsRefreshed();
+
+      } catch (e) {
+        console.error("Autosave failed", e);
+        // showMessage("Error", "Autosave failed", "neutral"); // Optional
+      } finally {
+        setSaving(false);
+      }
     };
 
     const timer = setTimeout(save, 800);
     return () => clearTimeout(timer);
-  }, [settings, provName, provPin, networkName, networkPin, initialSettings]); 
+  }, [settings, provName, provPin, networkName, networkPin, initialSettings]);
   // Added networkName/Pin/initialSettings to deps to correct closures.
 
   if (loading || !settings) return <div className="p-10 text-center text-zinc-500">Loading settings...</div>;
@@ -1740,23 +1750,23 @@ function SettingsView({
       {/* General Settings */}
       <Card className="p-4">
         <SectionHeader
-           icon={<Settings className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
-           title="General"
-           subtitle="Application preferences."
+          icon={<Settings className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
+          title="General"
+          subtitle="Application preferences."
         />
         <div className="mt-4 px-1">
-             <div className="flex items-center justify-between">
-                <div>
-                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Start on Startup</div>
-                    <div className="text-xs text-zinc-500">Launch automatically when you log in.</div>
-                </div>
-                <button 
-                    onClick={toggleAutostart}
-                    className={clsx("relative h-6 w-11 rounded-full transition-colors", autostart ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
-                >
-                    <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", autostart ? "translate-x-6" : "translate-x-1")} />
-                </button>
-             </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Start on Startup</div>
+              <div className="text-xs text-zinc-500">Launch automatically when you log in.</div>
+            </div>
+            <button
+              onClick={toggleAutostart}
+              className={clsx("relative h-6 w-11 rounded-full transition-colors", autostart ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+            >
+              <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", autostart ? "translate-x-6" : "translate-x-1")} />
+            </button>
+          </div>
         </div>
       </Card>
 
@@ -1783,68 +1793,68 @@ function SettingsView({
 
       {/* Cluster Mode */}
       <Card className="p-4">
-         <SectionHeader
+        <SectionHeader
           icon={<ShieldCheck className="h-5 w-5 text-zinc-600 dark:text-zinc-300" />}
           title="Cluster Mode"
           subtitle="Manage how this device connects."
         />
         <div className="mt-4 flex flex-col gap-4 px-1">
-            <div className="flex items-center gap-4 rounded-xl bg-zinc-900/5 p-1 dark:bg-white/5">
-                <button
-                    className={clsx(
-                        "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
-                        settings.cluster_mode === "auto" 
-                            ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50" 
-                            : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-400"
-                    )}
-                    onClick={() => setSettings({ ...settings, cluster_mode: "auto" })}
-                >
-                    Autogenerated
-                </button>
-                <button
-                    className={clsx(
-                        "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
-                        settings.cluster_mode === "provisioned" 
-                            ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50" 
-                            : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-400"
-                    )}
-                    onClick={() => setSettings({ ...settings, cluster_mode: "provisioned" })}
-                >
-                    Provisioned
-                </button>
-            </div>
+          <div className="flex items-center gap-4 rounded-xl bg-zinc-900/5 p-1 dark:bg-white/5">
+            <button
+              className={clsx(
+                "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
+                settings.cluster_mode === "auto"
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                  : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-400"
+              )}
+              onClick={() => setSettings({ ...settings, cluster_mode: "auto" })}
+            >
+              Autogenerated
+            </button>
+            <button
+              className={clsx(
+                "flex-1 rounded-lg py-1.5 text-sm font-medium transition",
+                settings.cluster_mode === "provisioned"
+                  ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
+                  : "text-zinc-600 hover:bg-zinc-900/5 dark:text-zinc-400"
+              )}
+              onClick={() => setSettings({ ...settings, cluster_mode: "provisioned" })}
+            >
+              Provisioned
+            </button>
+          </div>
 
-            {settings.cluster_mode === "provisioned" && (
-                <div className="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 bg-white/50 p-4 dark:border-white/10 dark:bg-white/5">
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster Name (No Spaces)</label>
-                        <input
-                        className="h-10 rounded-xl border border-zinc-900/10 bg-white px-3 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
-                        value={provName}
-                        onChange={(e) => setProvName(e.target.value.replace(/\s/g, ""))}
-                        />
-                         {provName.trim().includes(" ") && <span className="text-[10px] text-rose-500">Spaces not allowed.</span>}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster PIN (Min 6 chars)</label>
-                        <input
-                        className="h-10 rounded-xl border border-zinc-900/10 bg-white px-3 font-mono text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
-                        value={provPin}
-                        onChange={(e) => setProvPin(e.target.value)}
-                        />
-                         {provPin.length > 0 && provPin.length < 6 && <span className="text-[10px] text-rose-500">PIN must be at least 6 characters.</span>}
-                    </div>
-                </div>
-            )}
-            
-            {settings.cluster_mode === "auto" && (
-                 <div className="text-xs text-zinc-500">
-                    Cluster identity is randomly generated. To reset, use "Leave & Reset" in the header.
-                 </div>
-            )}
+          {settings.cluster_mode === "provisioned" && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 bg-white/50 p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster Name (No Spaces)</label>
+                <input
+                  className="h-10 rounded-xl border border-zinc-900/10 bg-white px-3 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
+                  value={provName}
+                  onChange={(e) => setProvName(e.target.value.replace(/\s/g, ""))}
+                />
+                {provName.trim().includes(" ") && <span className="text-[10px] text-rose-500">Spaces not allowed.</span>}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Cluster PIN (Min 6 chars)</label>
+                <input
+                  className="h-10 rounded-xl border border-zinc-900/10 bg-white px-3 font-mono text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
+                  value={provPin}
+                  onChange={(e) => setProvPin(e.target.value)}
+                />
+                {provPin.length > 0 && provPin.length < 6 && <span className="text-[10px] text-rose-500">PIN must be at least 6 characters.</span>}
+              </div>
+            </div>
+          )}
+
+          {settings.cluster_mode === "auto" && (
+            <div className="text-xs text-zinc-500">
+              Cluster identity is randomly generated. To reset, use "Leave & Reset" in the header.
+            </div>
+          )}
         </div>
       </Card>
-      
+
       {/* Synchronization */}
       <Card className="p-4">
         <SectionHeader
@@ -1853,120 +1863,120 @@ function SettingsView({
           subtitle="Control clipboard flow."
         />
         <div className="mt-4 px-1 space-y-4">
-             <div className="flex items-center justify-between">
-                <div>
-                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Send</div>
-                    <div className="text-xs text-zinc-500">Automatically send local clipboard to the cluster.</div>
-                </div>
-                {/* Simple Toggle Switch */}
-                <button 
-                    onClick={() => setSettings({...settings, auto_send: !settings.auto_send})}
-                    className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.auto_send ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
-                >
-                    <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.auto_send ? "translate-x-6" : "translate-x-1")} />
-                </button>
-             </div>
-             
-             {!settings.auto_send && (
-                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
-                     <div className="flex flex-col gap-2">
-                         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Global Shortcut (Send)</div>
-                         <ShortcutRecorder
-                            value={settings.shortcut_send}
-                            onChange={(val) => setSettings({ ...settings, shortcut_send: val })}
-                            placeholder="No shortcut set"
-                         />
-                         <div className="text-[10px] text-zinc-500">
-                             Keyboard shortcut to manually broadcast clipboard.
-                         </div>
-                     </div>
-                 </div>
-             )}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Send</div>
+              <div className="text-xs text-zinc-500">Automatically send local clipboard to the cluster.</div>
+            </div>
+            {/* Simple Toggle Switch */}
+            <button
+              onClick={() => setSettings({ ...settings, auto_send: !settings.auto_send })}
+              className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.auto_send ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+            >
+              <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.auto_send ? "translate-x-6" : "translate-x-1")} />
+            </button>
+          </div>
 
-             <div className="h-px bg-zinc-900/5 dark:bg-white/5" />
-
-             <div className="flex items-center justify-between">
-                <div>
-                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Receive</div>
-                    <div className="text-xs text-zinc-500">Automatically overwrite local clipboard with data from the cluster.</div>
+          {!settings.auto_send && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-col gap-2">
+                <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Global Shortcut (Send)</div>
+                <ShortcutRecorder
+                  value={settings.shortcut_send}
+                  onChange={(val) => setSettings({ ...settings, shortcut_send: val })}
+                  placeholder="No shortcut set"
+                />
+                <div className="text-[10px] text-zinc-500">
+                  Keyboard shortcut to manually broadcast clipboard.
                 </div>
-                <button 
-                    onClick={() => setSettings({...settings, auto_receive: !settings.auto_receive})}
-                    className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.auto_receive ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
-                >
-                    <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.auto_receive ? "translate-x-6" : "translate-x-1")} />
-                </button>
-             </div>
-             
-             {!settings.auto_receive && (
-                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
-                     <div className="flex flex-col gap-2">
-                         <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Global Shortcut (Receive)</div>
-                         <ShortcutRecorder
-                            value={settings.shortcut_receive}
-                            onChange={(val) => setSettings({ ...settings, shortcut_receive: val })}
-                            placeholder="No shortcut set"
-                         />
-                         <div className="text-[10px] text-zinc-500">
-                             Keyboard shortcut to apply pending clipboard data.
-                         </div>
-                     </div>
-                 </div>
-             )}
+              </div>
+            </div>
+          )}
+
+          <div className="h-px bg-zinc-900/5 dark:bg-white/5" />
+
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Automatic Receive</div>
+              <div className="text-xs text-zinc-500">Automatically overwrite local clipboard with data from the cluster.</div>
+            </div>
+            <button
+              onClick={() => setSettings({ ...settings, auto_receive: !settings.auto_receive })}
+              className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.auto_receive ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+            >
+              <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.auto_receive ? "translate-x-6" : "translate-x-1")} />
+            </button>
+          </div>
+
+          {!settings.auto_receive && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-col gap-2">
+                <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Global Shortcut (Receive)</div>
+                <ShortcutRecorder
+                  value={settings.shortcut_receive}
+                  onChange={(val) => setSettings({ ...settings, shortcut_receive: val })}
+                  placeholder="No shortcut set"
+                />
+                <div className="text-[10px] text-zinc-500">
+                  Keyboard shortcut to apply pending clipboard data.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
-      
+
       {/* File Transfer */}
       <Card className="p-4">
         <SectionHeader
-          icon={<div className="h-5 w-5 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg></div>}
+          icon={<div className="h-5 w-5 flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></svg></div>}
           title="File Transfer"
           subtitle="Manage how files are shared."
         />
         <div className="mt-4 px-1 space-y-4">
-             <div className="flex items-center justify-between">
-                <div>
-                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Allow File Transfer</div>
-                    <div className="text-xs text-zinc-500">Send and receive files with clipboard.</div>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Allow File Transfer</div>
+              <div className="text-xs text-zinc-500">Send and receive files with clipboard.</div>
+            </div>
+            <button
+              onClick={() => setSettings({ ...settings, enable_file_transfer: !settings.enable_file_transfer })}
+              className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.enable_file_transfer ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+            >
+              <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.enable_file_transfer ? "translate-x-6" : "translate-x-1")} />
+            </button>
+          </div>
+
+          {settings.enable_file_transfer && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Auto-Download Limit</div>
+                  <div className="text-xs font-mono text-zinc-500">
+                    {(settings.max_auto_download_size / 1024 / 1024).toFixed(0)} MB
+                  </div>
                 </div>
-                <button 
-                    onClick={() => setSettings({...settings, enable_file_transfer: !settings.enable_file_transfer})}
-                    className={clsx("relative h-6 w-11 rounded-full transition-colors", settings.enable_file_transfer ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
-                >
-                    <span className={clsx("block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform", settings.enable_file_transfer ? "translate-x-6" : "translate-x-1")} />
-                </button>
-             </div>
-             
-             {settings.enable_file_transfer && (
-                 <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-white/5">
-                     <div className="flex flex-col gap-2">
-                         <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Auto-Download Limit</div>
-                            <div className="text-xs font-mono text-zinc-500">
-                                {(settings.max_auto_download_size / 1024 / 1024).toFixed(0)} MB
-                            </div>
-                         </div>
-                         <input 
-                            type="range"
-                            min="0"
-                            max="500"
-                            step="10"
-                            value={(settings.max_auto_download_size / 1024 / 1024) || 0}
-                            onChange={(e) => {
-                                const val = parseInt(e.target.value) * 1024 * 1024;
-                                setSettings({ ...settings, max_auto_download_size: val });
-                            }}
-                            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-zinc-200 accent-emerald-500 dark:bg-zinc-700"
-                         />
-                         <div className="text-[10px] text-zinc-500">
-                             Files larger than this must be manually downloaded.
-                         </div>
-                     </div>
-                 </div>
-             )}
+                <input
+                  type="range"
+                  min="0"
+                  max="500"
+                  step="10"
+                  value={(settings.max_auto_download_size / 1024 / 1024) || 0}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) * 1024 * 1024;
+                    setSettings({ ...settings, max_auto_download_size: val });
+                  }}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-zinc-200 accent-emerald-500 dark:bg-zinc-700"
+                />
+                <div className="text-[10px] text-zinc-500">
+                  Files larger than this must be manually downloaded.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
-      
+
       {/* Notifications */}
       <Card className="p-4">
         <SectionHeader
@@ -1975,75 +1985,75 @@ function SettingsView({
           subtitle="Choose what to see."
         />
         <div className="mt-4 px-1 space-y-3">
-            {[
-                { label: "Device Joins", key: "device_join" as const },
-                { label: "Device Leaves", key: "device_leave" as const },
-                { label: "Data Sent", key: "data_sent" as const },
-                { label: "Data Received", key: "data_received" as const },
-            ].map(item => (
-                <div key={item.key} className="flex items-center justify-between">
-                    <div className="text-sm text-zinc-700 dark:text-zinc-300">{item.label}</div>
-                    <button 
-                        onClick={() => setSettings({
-                            ...settings, 
-                            notifications: { ...settings.notifications, [item.key]: !settings.notifications[item.key] }
-                        })}
-                        className={clsx("relative h-5 w-9 rounded-full transition-colors", settings.notifications[item.key] ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
-                    >
-                         <span className={clsx("block h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform", settings.notifications[item.key] ? "translate-x-5" : "translate-x-1")} />
-                    </button>
-                </div>
-            ))}
-            
-            {/* Large File Notification (Root Setting) */}
-            <div className="flex items-center justify-between">
-                <div className="text-sm text-zinc-700 dark:text-zinc-300">Large File Transfers</div>
-                <button 
-                    onClick={() => setSettings({
-                        ...settings, 
-                        notify_large_files: !settings.notify_large_files
-                    })}
-                    className={clsx("relative h-5 w-9 rounded-full transition-colors", settings.notify_large_files ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
-                >
-                        <span className={clsx("block h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform", settings.notify_large_files ? "translate-x-5" : "translate-x-1")} />
-                </button>
+          {[
+            { label: "Device Joins", key: "device_join" as const },
+            { label: "Device Leaves", key: "device_leave" as const },
+            { label: "Data Sent", key: "data_sent" as const },
+            { label: "Data Received", key: "data_received" as const },
+          ].map(item => (
+            <div key={item.key} className="flex items-center justify-between">
+              <div className="text-sm text-zinc-700 dark:text-zinc-300">{item.label}</div>
+              <button
+                onClick={() => setSettings({
+                  ...settings,
+                  notifications: { ...settings.notifications, [item.key]: !settings.notifications[item.key] }
+                })}
+                className={clsx("relative h-5 w-9 rounded-full transition-colors", settings.notifications[item.key] ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+              >
+                <span className={clsx("block h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform", settings.notifications[item.key] ? "translate-x-5" : "translate-x-1")} />
+              </button>
             </div>
+          ))}
+
+          {/* Large File Notification (Root Setting) */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-zinc-700 dark:text-zinc-300">Large File Transfers</div>
+            <button
+              onClick={() => setSettings({
+                ...settings,
+                notify_large_files: !settings.notify_large_files
+              })}
+              className={clsx("relative h-5 w-9 rounded-full transition-colors", settings.notify_large_files ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}
+            >
+              <span className={clsx("block h-3 w-3 transform rounded-full bg-white shadow-sm transition-transform", settings.notify_large_files ? "translate-x-5" : "translate-x-1")} />
+            </button>
+          </div>
         </div>
       </Card>
-      
+
       {/* Footer Status */}
       <div className="flex flex-col items-center justify-center gap-2 pt-2 pb-4 opacity-50">
-           <span className={clsx("text-[10px] font-medium transition-opacity", saving ? "opacity-100 text-zinc-500" : "opacity-0 duration-1000")}>
-               Saving changes...
-           </span>
-           <div className="text-[10px] text-zinc-400">
-               ClusterCut v{version} ({__COMMIT_HASH__})
-           </div>
+        <span className={clsx("text-[10px] font-medium transition-opacity", saving ? "opacity-100 text-zinc-500" : "opacity-0 duration-1000")}>
+          Saving changes...
+        </span>
+        <div className="text-[10px] text-zinc-400">
+          ClusterCut v{version} ({__COMMIT_HASH__})
+        </div>
       </div>
 
-      
+
     </div>
   );
 }
 
 
 
-function Dialog({ 
-  open, 
-  title, 
-  description, 
-  onConfirm, 
-  onCancel, 
-  confirmLabel = "Confirm", 
+function Dialog({
+  open,
+  title,
+  description,
+  onConfirm,
+  onCancel,
+  confirmLabel = "Confirm",
   cancelLabel = "Cancel",
-  type = "neutral" 
-}: { 
-  open: boolean; 
-  title: string; 
-  description: string; 
-  onConfirm: () => void; 
-  onCancel?: () => void; 
-  confirmLabel?: string; 
+  type = "neutral"
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  onConfirm: () => void;
+  onCancel?: () => void;
+  confirmLabel?: string;
   cancelLabel?: string;
   type?: "neutral" | "danger" | "success";
 }) {
@@ -2062,8 +2072,8 @@ function Dialog({
               {cancelLabel}
             </Button>
           )}
-          <Button 
-            variant={type === "danger" ? "danger" : "primary"} 
+          <Button
+            variant={type === "danger" ? "danger" : "primary"}
             onClick={onConfirm}
           >
             {confirmLabel}
@@ -2086,102 +2096,102 @@ function CopyMini({ text }: { text: string }) {
 
 /* --- Manual Sync Components --- */
 
-function ManualSyncFAB({ 
-    hasPendingSend, 
-    hasPendingReceive, 
-    onClick 
-}: { 
-    hasPendingSend: boolean, 
-    hasPendingReceive: boolean, 
-    onClick: () => void 
+function ManualSyncFAB({
+  hasPendingSend,
+  hasPendingReceive,
+  onClick
+}: {
+  hasPendingSend: boolean,
+  hasPendingReceive: boolean,
+  onClick: () => void
 }) {
-    if (!hasPendingSend && !hasPendingReceive) return null;
+  if (!hasPendingSend && !hasPendingReceive) return null;
 
-    return (
-        <button
-             onClick={onClick}
-             className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xl shadow-emerald-600/30 transition hover:scale-105 hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/30"
-        >
-             {hasPendingReceive ? (
-                 <ArrowDown className="h-6 w-6" />
-             ) : (
-                 <Send className="h-6 w-6 pl-0.5" />
-             )}
-             <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-zinc-900">
-                 !
-             </span>
-        </button>
-    );
+  return (
+    <button
+      onClick={onClick}
+      className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xl shadow-emerald-600/30 transition hover:scale-105 hover:bg-emerald-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/30"
+    >
+      {hasPendingReceive ? (
+        <ArrowDown className="h-6 w-6" />
+      ) : (
+        <Send className="h-6 w-6 pl-0.5" />
+      )}
+      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-zinc-900">
+        !
+      </span>
+    </button>
+  );
 }
 
 function ManualSyncModal({
-    open,
-    onClose,
-    localContent,
-    remoteContent, // ClipboardPayload or string
-    onSend,
-    onReceive
+  open,
+  onClose,
+  localContent,
+  remoteContent, // ClipboardPayload or string
+  onSend,
+  onReceive
 }: {
-    open: boolean;
-    onClose: () => void;
-    localContent: string;
-    remoteContent: { text: string, sender: string, timestamp: number } | null;
-    onSend: () => void;
-    onReceive: () => void;
+  open: boolean;
+  onClose: () => void;
+  localContent: string;
+  remoteContent: { text: string, sender: string, timestamp: number } | null;
+  onSend: () => void;
+  onReceive: () => void;
 }) {
-    if (!open) return null;
+  if (!open) return null;
 
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-             <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-zinc-950 shadow-2xl ring-1 ring-white/10 text-zinc-50">
-                 <div className="flex items-center justify-between border-b border-white/10 p-5">
-                      <h3 className="text-lg font-semibold">Synchronization</h3>
-                      <button onClick={onClose} className="rounded-lg p-1 hover:bg-white/10">
-                          <span className="text-xl leading-none text-zinc-400">×</span>
-                      </button>
-                 </div>
-                 
-                 <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
-                      {/* Send Column */}
-                      <div className="flex flex-col p-6 gap-4">
-                           <div className="flex items-center gap-2 text-emerald-400">
-                               <ArrowUp className="h-5 w-5" />
-                               <span className="font-medium">Send Local</span>
-                           </div>
-                           <div className="flex-1 rounded-xl bg-white/5 p-4 text-sm font-mono text-zinc-300 h-32 overflow-y-auto whitespace-pre-wrap border border-white/5">
-                                {localContent || <span className="text-zinc-600 italic">Clipboard empty</span>}
-                           </div>
-                           <Button variant="primary" onClick={onSend} disabled={!localContent} iconLeft={<Send className="h-4 w-4" />}>
-                                Broadcast to Cluster
-                           </Button>
-                      </div>
-
-                      {/* Receive Column */}
-                      <div className="flex flex-col p-6 gap-4">
-                           <div className="flex items-center gap-2 text-blue-400">
-                               <ArrowDown className="h-5 w-5" />
-                               <span className="font-medium">Receive Remote</span>
-                           </div>
-                           <div className="flex-1 rounded-xl bg-white/5 p-4 text-sm font-mono text-zinc-300 h-32 overflow-y-auto whitespace-pre-wrap border border-white/5 relative">
-                                {remoteContent ? (
-                                    <>
-                                        {remoteContent.text}
-                                        <div className="absolute bottom-2 right-2 flex gap-2">
-                                            <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-zinc-400">
-                                                From: {remoteContent.sender}
-                                            </span>
-                                        </div>
-                                    </>
-                                ) : (
-                                    <span className="text-zinc-600 italic">No pending data</span>
-                                )}
-                           </div>
-                           <Button variant="primary" onClick={onReceive} disabled={!remoteContent} iconLeft={<Copy className="h-4 w-4" />}>
-                                Apply to Clipboard
-                           </Button>
-                      </div>
-                 </div>
-             </div>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl overflow-hidden rounded-3xl bg-zinc-950 shadow-2xl ring-1 ring-white/10 text-zinc-50">
+        <div className="flex items-center justify-between border-b border-white/10 p-5">
+          <h3 className="text-lg font-semibold">Synchronization</h3>
+          <button onClick={onClose} className="rounded-lg p-1 hover:bg-white/10">
+            <span className="text-xl leading-none text-zinc-400">×</span>
+          </button>
         </div>
-    );
+
+        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10">
+          {/* Send Column */}
+          <div className="flex flex-col p-6 gap-4">
+            <div className="flex items-center gap-2 text-emerald-400">
+              <ArrowUp className="h-5 w-5" />
+              <span className="font-medium">Send Local</span>
+            </div>
+            <div className="flex-1 rounded-xl bg-white/5 p-4 text-sm font-mono text-zinc-300 h-32 overflow-y-auto whitespace-pre-wrap border border-white/5">
+              {localContent || <span className="text-zinc-600 italic">Clipboard empty</span>}
+            </div>
+            <Button variant="primary" onClick={onSend} disabled={!localContent} iconLeft={<Send className="h-4 w-4" />}>
+              Broadcast to Cluster
+            </Button>
+          </div>
+
+          {/* Receive Column */}
+          <div className="flex flex-col p-6 gap-4">
+            <div className="flex items-center gap-2 text-blue-400">
+              <ArrowDown className="h-5 w-5" />
+              <span className="font-medium">Receive Remote</span>
+            </div>
+            <div className="flex-1 rounded-xl bg-white/5 p-4 text-sm font-mono text-zinc-300 h-32 overflow-y-auto whitespace-pre-wrap border border-white/5 relative">
+              {remoteContent ? (
+                <>
+                  {remoteContent.text}
+                  <div className="absolute bottom-2 right-2 flex gap-2">
+                    <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-zinc-400">
+                      From: {remoteContent.sender}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-zinc-600 italic">No pending data</span>
+              )}
+            </div>
+            <Button variant="primary" onClick={onReceive} disabled={!remoteContent} iconLeft={<Copy className="h-4 w-4" />}>
+              Apply to Clipboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

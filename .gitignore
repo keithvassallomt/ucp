@@ -34,3 +34,6 @@ clustercut-extension.zip
 
 # Local Flatpak bundle
 clustercut.flatpak
+
+# macOS signing credentials
+.env

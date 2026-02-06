@@ -8,6 +8,11 @@ default:
 build:
     npm run tauri build
 
+# Build, sign, and notarize for macOS (uses .env file for credentials)
+# Find your signing identity with: security find-identity -v -p codesigning | grep "Developer ID Application"
+build-macos:
+    set -a && source .env && set +a && npm run tauri build
+
 # Rebuild the Flatpak (Local bundle method)
 flatpak-local:
     @echo "Building native release binary..."
@@ -51,6 +56,29 @@ setup-flatpak:
     @echo "Copying necessary patches..."
     # Ensure patches are extracted from shared-modules if not present
     
+# Notarize the macOS DMG (requires notarytool-profile in keychain)
+notarize:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" -type f | head -1)
+
+    if [ -z "$DMG_PATH" ]; then
+        echo "Error: No DMG found. Run 'just build' first."
+        exit 1
+    fi
+
+    echo "Notarizing: $DMG_PATH"
+    xcrun notarytool submit "$DMG_PATH" --keychain-profile "notarytool-profile" --wait
+
+    echo "Stapling notarization ticket..."
+    xcrun stapler staple "$DMG_PATH"
+
+    echo "Verifying notarization..."
+    spctl -a -t open --context context:primary-signature -v "$DMG_PATH"
+
+    echo "Done! DMG is notarized and ready for distribution."
+
 # Build the GNOME Extension ZIP
 extension-zip:
     @echo "Building GNOME Extension ZIP..."

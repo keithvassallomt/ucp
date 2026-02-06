@@ -87,7 +87,7 @@ async fn get_autostart_state(app_handle: tauri::AppHandle) -> Result<Option<bool
 }
 
 #[tauri::command]
-async fn show_native_notification(title: String, body: String) -> Result<(), String> {
+async fn show_native_notification(app_handle: tauri::AppHandle, title: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         use windows::UI::Notifications::{ToastNotificationManager, ToastNotification};
@@ -132,9 +132,11 @@ async fn show_native_notification(title: String, body: String) -> Result<(), Str
             .show()
             .map_err(|e| e.to_string());
     }
-    
-    // macOS - Fallback handled by Frontend or separate plugin call if needed.
-    // Assuming backend calls are for file transfers primarily.
+
+    #[cfg(target_os = "macos")]
+    {
+        send_notification(&app_handle, &title, &body, false, None);
+    }
     
     Ok(())
 }
@@ -184,6 +186,7 @@ fn init_logging() {
     // Base Level: INFO (for external crates) + User Level for US
     let filter = tracing_subscriber::EnvFilter::new("info")
         .add_directive(format!("tauri_app={}", args.log_level.to_lowercase()).parse().unwrap())
+        .add_directive(format!("clustercut_lib={}", args.log_level.to_lowercase()).parse().unwrap())
         // Silence noisy networking crates
         .add_directive("rustls=warn".parse().unwrap())
         .add_directive("quinn=warn".parse().unwrap())
@@ -196,6 +199,20 @@ fn init_logging() {
         .init();
         
     tracing::info!("Logging initialized. Level: {}, Hostname: {}", level, get_hostname_internal());
+
+    if cfg!(target_os = "macos") {
+        if let Ok(exe) = std::env::current_exe() {
+            let path_str = exe.to_string_lossy();
+            tracing::info!("[Bundle Check] Executable Path: {}", path_str);
+            if path_str.contains(".app/Contents/MacOS/") {
+                tracing::info!("[Bundle Check] Running inside an App Bundle. Native Notifications SHOULD work.");
+            } else {
+                tracing::warn!("[Bundle Check] Running as raw binary. Notifications will likely use Mock.");
+            }
+        } else {
+             tracing::error!("[Bundle Check] Failed to get current executable path.");
+        }
+    }
 }
 
 fn get_hostname_internal() -> String {
@@ -259,60 +276,95 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
     // 2. macOS (user-notify)
     #[cfg(target_os = "macos")]
     {
-        tracing::debug!("[Notification] macOS detected. Using user-notify...");
+        tracing::info!("[Notification] macOS detected. Using user-notify...");
         let title = title.to_string();
         let body = body.to_string();
         let app = app_handle.clone();
         
-        tauri::async_runtime::spawn(async move {
-            // Import necessary items. 
-            // Based on user feedback and source check: imports might be finicky.
-            // We use fully qualified names or verified paths.
-            use user_notify::{NotificationBuilder, NotificationResponseAction};
+        static NOTIFICATION_MANAGER: std::sync::OnceLock<std::sync::Arc<dyn user_notify::NotificationManager>> = std::sync::OnceLock::new();
+
+        let manager = NOTIFICATION_MANAGER.get_or_init(|| {
+            tracing::info!("[Notification] Initializing Singleton Manager on MAIN THREAD...");
+            let (tx, rx) = std::sync::mpsc::channel();
+            let app_handle_main = app.clone();
             
-            // Get Manager
-            let manager = user_notify::get_notification_manager("com.keithvassallo.clustercut".to_string(), None);
-            
-            // Register Callback
-            // Note: This sets the global delegate on macOS. 
-            // In a perfect world, we do this once at startup. 
-            // Doing it here covers us but might race if highly concurrent. 
-            // Given the use case, it's acceptable.
-            let app_clone = app.clone();
-            let _ = manager.register(
-                Box::new(move |response| {
-                    tracing::info!("Notification Response: {:?}", response);
-                    match response.action {
-                        NotificationResponseAction::Default => {
-                            tracing::info!("Emitting 'notification-clicked' event");
-                            let _ = app_clone.emit("notification-clicked", ());
-                            
-                            let _ = app_clone.get_webview_window("main").map(|w| {
-                                let _ = w.unminimize();
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            });
+            // Dispatch creation AND registration to Main Thread to satisfy SendWrapper thread affinity
+            let _ = app.run_on_main_thread(move || {
+                tracing::info!("[Notification] Creating manager on Main Thread...");
+                let m = user_notify::get_notification_manager("com.keithvassallo.clustercut".to_string(), None);
+                
+                // Dispatch REGISTER immediately on Main Thread
+                let app_handle_callback = app_handle_main.clone();
+                match m.register(
+                    Box::new(move |response| {
+                        tracing::info!("Notification Response: {:?}" , response);
+                        match response.action {
+                            user_notify::NotificationResponseAction::Default => {
+                                let _ = app_handle_callback.emit("notification-clicked", ());
+                                let _ = app_handle_callback.get_webview_window("main").map(|w| {
+                                    let _ = w.unminimize();
+                                    let _ = w.show();
+                                    let _ = w.set_focus();
+                                });
+                            }
+                            _ => {}
                         }
-                        _ => {}
-                    }
-                }),
-                vec![] 
-            );
+                    }),
+                    vec![] 
+                ) {
+                    Ok(_) => tracing::info!("[Notification] Callback registered successfully."),
+                    Err(e) => tracing::error!("[Notification] Callback registration failed: {:?}" , e),
+                }
 
-            // Ask permission (only asks once)
-            let _ = manager.first_time_ask_for_notification_permission().await;
-
-            // Build Notification
-            // Use NotificationBuilder directly to avoid 'Notification' import ambiguity
-            let notification = NotificationBuilder::new()
-                .title(&title)
-                .body(&body);
-                // .sound("Ping"); // Removed to avoid potential compilation error if method missing
-
-            match manager.send_notification(notification).await {
-                Ok(_) => tracing::debug!("Notification sent successfully"),
-                Err(e) => tracing::error!("Failed to send notification: {:?}", e),
+                // Send the manager back to the implementation thread
+                if let Err(e) = tx.send(m) {
+                    tracing::error!("[Notification] Failed to send manager back: {:?}", e);
+                }
+            });
+            
+            // Block until Main Thread creates and registers the manager
+            match rx.recv() {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::error!("[Notification] Failed to receive manager from Main Thread: {:?}", e);
+                    // Fallback to avoid panic, though this state is critical
+                     user_notify::get_notification_manager("com.keithvassallo.clustercut".to_string(), None)
+                }
             }
+        });
+
+        let manager = manager.clone();
+
+        // Spawn thread to SEND payload
+        std::thread::spawn(move || {
+            let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                Ok(rt) => rt,
+                Err(e) => {
+                    tracing::error!("[Notification] Failed to build runtime: {:?}", e);
+                    return;
+                }
+            };
+
+            rt.block_on(async move {
+                use user_notify::NotificationBuilder;
+                
+                // Ask permission (idempotent-ish check)
+                // We ask every time just to be sure we have it, or rely on cached state
+                match manager.first_time_ask_for_notification_permission().await {
+                     Ok(granted) => tracing::info!("[Notification] Permission status: {}", granted),
+                     Err(e) => tracing::error!("[Notification] Permission check failed: {:?}", e),
+                }
+
+                tracing::info!("[Notification] Sending notification...");
+                let notification = NotificationBuilder::new()
+                    .title(&title)
+                    .body(&body);
+
+                match manager.send_notification(notification).await {
+                    Ok(_) => tracing::info!("[Notification] Sent successfully via user-notify"),
+                    Err(e) => tracing::error!("[Notification] Failed to send notification: {:?}", e),
+                }
+            });
         });
     }
     
@@ -2103,9 +2155,9 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                     let _ = listener_handle.emit("clipboard-change", &payload_obj);
                                     
                                     // Auto-Download Logic
-                                    let (auto_recv, enable_ft, size_limit) = {
+                                    let (auto_recv, enable_ft, size_limit, notify_large) = {
                                         let s = listener_state.settings.lock().unwrap();
-                                        (s.auto_receive, s.enable_file_transfer, s.max_auto_download_size)
+                                        (s.auto_receive, s.enable_file_transfer, s.max_auto_download_size, s.notify_large_files)
                                     };
 
                                     if !enable_ft {
@@ -2114,6 +2166,8 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                         let mut total_size = 0u64;
                                         for f in files { total_size += f.size; }
                                         
+                                        tracing::info!("File Transfer Logic: AutoRecv={}, TotalSize={}, Limit={}, NotifyLarge={}", auto_recv, total_size, size_limit, notify_large);
+
                                         if auto_recv && total_size <= size_limit {
                                             tracing::info!("Auto-downloading {} files ({} bytes)", files.len(), total_size);
                                             // Request Each File
@@ -2139,10 +2193,13 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                                 }
                                             }
                                         } else {
-                                            let settings = listener_state.settings.lock().unwrap();
-                                            if settings.notify_large_files {
+                                            // Too large or auto-recv off
+                                            if notify_large {
+                                                tracing::info!("Large file or manual mode. Sending notification."); 
                                                 let body = format!("Received {} files from {}. Click to download.", files.len(), sender);
                                                 send_notification(&listener_handle, "Files Available", &body, true, None);
+                                            } else {
+                                                tracing::warn!("Large file received but 'notify_large_files' is FALSE. No notification sent.");
                                             }
                                         }
                                     } // End if !enable_ft else
