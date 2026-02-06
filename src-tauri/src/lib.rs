@@ -224,18 +224,40 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 // Helper to broadcast a new peer to all known peers (Gossip)
 pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body: &str, increment_badge: bool, _id: Option<i32>) {
     // 1. Windows (Native winrt-notification, requested by user)
+    // 1. Windows (Native windows-rs with XML Actions)
     #[cfg(target_os = "windows")]
     {
-         use winrt_notification::{Toast, Duration, Sound};
-         // Use the exact App ID from tauri.conf.json
-         let aumid = "com.keithvassallo.clustercut"; 
-         
-         let _ = Toast::new(aumid)
-            .title(title)
-            .text1(body)
-            .sound(Some(Sound::SMS))
-            .duration(Duration::Short)
-            .show();
+        use windows::UI::Notifications::{ToastNotificationManager, ToastNotification};
+        use windows::Data::Xml::Dom::XmlDocument;
+        use windows::core::HSTRING;
+
+        let aumid = "com.keithvassallo.clustercut";
+        
+        // Since this is a generic notification (clipboard update, peer found, etc.), 
+        // we might not want specific buttons like "Download".
+        // But for consistency and "click to show app", the basic XML structure is good.
+        // We'll mimic the simpler notification but use 'activationType="protocol"' to wake app.
+        
+        let xml = format!(r#"
+<toast activationType="protocol" launch="clustercut://action/show">
+    <visual>
+        <binding template="ToastGeneric">
+            <text>{}</text>
+            <text>{}</text>
+        </binding>
+    </visual>
+</toast>
+"#, title, body);
+
+        if let Ok(doc) = XmlDocument::new() {
+             if let Ok(_) = doc.LoadXml(&HSTRING::from(&xml)) {
+                 if let Ok(toast) = ToastNotification::CreateToastNotification(&doc) {
+                     if let Ok(notifier) = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(aumid)) {
+                         let _ = notifier.Show(&toast);
+                     }
+                 }
+             }
+        }
     }
 
     // 2. macOS (Native Plugin)
