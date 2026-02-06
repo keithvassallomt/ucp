@@ -90,7 +90,7 @@ async fn get_autostart_state(app_handle: tauri::AppHandle) -> Result<Option<bool
 async fn show_native_notification(title: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use winrt_notification::{Toast, Text, Duration, Sound};
+        use winrt_notification::{Toast, Duration, Sound};
         Toast::new(Toast::POWERSHELL_APP_ID) // Using PowerShell ID transiently, but ideally use custom AUMID
             .title(&title)
             .text1(&body)
@@ -202,7 +202,7 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
     // 1. Windows (Native winrt-notification, requested by user)
     #[cfg(target_os = "windows")]
     {
-         use winrt_notification::{Toast, Text, Duration, Sound};
+         use winrt_notification::{Toast, Duration, Sound};
          // Use the exact App ID from tauri.conf.json
          let aumid = "com.keithvassallo.clustercut"; 
          
