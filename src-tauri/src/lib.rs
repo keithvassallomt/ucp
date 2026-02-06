@@ -288,10 +288,9 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
                      let action = handle.wait_for_action().await;
                      tracing::info!("Notification Action: {:?}", action);
                      
-                     // If action is Default or similar, we emit.
-                     // user-notify Action enum: Default, Action(String), Closed, Dismissed
+                     // user-notify defines `NotificationResponseAction` with `Default`, `Dismiss`, `Other(String)`
                      match action {
-                         user_notify::Action::Default | user_notify::Action::Action(_) => {
+                         user_notify::NotificationResponseAction::Default => {
                             tracing::info!("Emitting 'notification-clicked' event");
                             let _ = app.emit("notification-clicked", ());
                             
