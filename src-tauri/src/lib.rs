@@ -1122,13 +1122,10 @@ pub fn run() {
             #[cfg(not(target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
-                // Force registration of schemes defined in tauri.conf.json
-                // app.deep_link().register("clustercut")? // implicit from config usually, but let's try explicit if register_all doesn't exist or verify API.
-                // It is usually app.deep_link().register_all()?;
-                
-                 if let Err(e) = app.deep_link().register_all() {
-                     tracing::warn!("Failed to register deep link schemes: {}", e);
-                 }
+                // Explicitly register the scheme to avoid config parsing issues
+                if let Err(e) = app.deep_link().register("clustercut") {
+                     tracing::warn!("Failed to register deep link scheme 'clustercut': {}", e);
+                }
             }
 
             // Clear Cache on Startup
