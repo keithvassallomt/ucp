@@ -27,6 +27,8 @@ use crate::protocol::Message;
 struct Args {
     #[arg(long, default_value = "debug")]
     log_level: String,
+    #[arg(long, default_value_t = false)]
+    minimized: bool,
 }
 
 #[tauri::command]
@@ -52,8 +54,10 @@ async fn configure_autostart(app_handle: tauri::AppHandle, enable: bool) -> Resu
             }
             
             // X-Flatpak tag and Exec command are key
+            // Appending --minimized is tricky here because we don't know if the user WANTS it minimized always?
+            // The requirement says: "Make this command line argument default when creating the launcher/service/whatever for auto-startup."
             let content = format!(
-                "[Desktop Entry]\nType=Application\nName=ClusterCut\nComment=ClusterCut Clipboard Sync\nExec=flatpak run {}\nX-Flatpak={}\nTerminal=false\nCategories=Utility;\n",
+                "[Desktop Entry]\nType=Application\nName=ClusterCut\nComment=ClusterCut Clipboard Sync\nExec=flatpak run {} --minimized\nX-Flatpak={}\nTerminal=false\nCategories=Utility;\n",
                 id, id
             );
             std::fs::write(&file_path, content).map_err(|e| e.to_string())?;
@@ -141,13 +145,13 @@ async fn show_native_notification(app_handle: tauri::AppHandle, title: String, b
     Ok(())
 }
 
-fn init_logging() {
+fn init_logging() -> Args {
     // 1. Parse CLI Args (ignoring unknown args that Tauri might use)
     let args = match Args::try_parse() {
         Ok(a) => a,
         Err(_) => {
             // Keep default if parsing fails (e.g. extra args)
-            Args { log_level: "debug".to_string() }
+            Args { log_level: "debug".to_string(), minimized: false }
         }
     };
 
@@ -213,6 +217,8 @@ fn init_logging() {
              tracing::error!("[Bundle Check] Failed to get current executable path.");
         }
     }
+    
+    args
 }
 
 fn get_hostname_internal() -> String {
@@ -1375,8 +1381,9 @@ async fn confirm_pending_clipboard(
 pub fn run() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     
-    // Initialize Logging
-    init_logging();
+    // Initialize Logging and get Args
+    let args = init_logging();
+    let minimized_arg = args.minimized;
     
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -1398,17 +1405,32 @@ pub fn run() {
                  let _ = win.set_focus();
              }
         }))
-        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![])))
+        // Pass --minimized to autostart args
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(handle_shortcut).build())
         .manage(AppState::new())
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(not(target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 // Explicitly register the scheme to avoid config parsing issues
                 if let Err(e) = app.deep_link().register("clustercut") {
                      tracing::warn!("Failed to register deep link scheme 'clustercut': {}", e);
+                }
+            }
+
+            // Handle Minimized Startup
+            if let Some(window) = app.get_webview_window("main") {
+                if minimized_arg {
+                    // It should be hidden by default via tauri.conf.json logic (visible: false)
+                    // But explicitly hiding helps if we didn't change conf or for redundancy.
+                    // Actually, if we set visible: false in conf, we MUST show it here if NOT minimized.
+                    tracing::info!("Starting in minimized mode.");
+                } else {
+                    tracing::info!("Starting in normal mode (showing window).");
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
 
