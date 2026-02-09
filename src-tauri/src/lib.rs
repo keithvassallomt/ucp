@@ -1429,6 +1429,7 @@ pub fn run() {
                     tracing::info!("Starting in minimized mode.");
                 } else {
                     tracing::info!("Starting in normal mode (showing window).");
+                    let _ = window.unminimize();
                     let _ = window.show();
                     let _ = window.set_focus();
                 }

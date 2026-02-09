@@ -122,6 +122,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
                 "quit" => app.exit(0),
                 "show" => {
                     if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.unminimize();
                         let _ = window.show();
                         let _ = window.set_focus();
                         set_badge(app, false);
@@ -176,6 +177,7 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
             {
                 let app = tray.app_handle();
                 if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.unminimize();
                     let _ = window.show();
                     let _ = window.set_focus();
                     set_badge(app, false);
