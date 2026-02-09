@@ -235,6 +235,7 @@ use transport::Transport;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 // Track last notification time for macOS cleaner
+#[cfg(target_os = "macos")]
 static LAST_NOTIFICATION_TIME: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
 
 // Helper to broadcast a new peer to all known peers (Gossip)
@@ -613,6 +614,12 @@ pub(crate) fn send_notification(app_handle: &tauri::AppHandle, title: &str, body
 }
 
 fn check_and_notify_leave(app_handle: &tauri::AppHandle, state: &AppState, peer: &Peer) {
+    // Suppress leave notifications on startup too (though less likely to happen immediately)
+    if !state.should_notify() {
+        tracing::debug!("[Notification] Device leave notification suppressed by startup timer for peer: {}", peer.hostname);
+        return;
+    }
+
     let notifications = state.settings.lock().unwrap().notifications.clone();
     if notifications.device_leave {
         let local_net = state.network_name.lock().unwrap().clone();
@@ -942,8 +949,13 @@ async fn probe_ip(
                          
                           let notifications = state.settings.lock().unwrap().notifications.clone();
                           if notifications.device_join {
-                             tracing::info!("[Notification] Triggering 'Device Joined' for manual peer: {}", peer.hostname);
-                             send_notification(&app_handle, "Device Joined", &format!("Found manual peer: {}", peer.hostname), false, Some(1), "devices", NotificationPayload::None);
+                             // Check startup timer
+                             if state.should_notify() {
+                                 tracing::info!("[Notification] Triggering 'Device Joined' for manual peer: {}", peer.hostname);
+                                 send_notification(&app_handle, "Device Joined", &format!("Found manual peer: {}", peer.hostname), false, Some(1), "devices", NotificationPayload::None);
+                             } else {
+                                 tracing::debug!("[Notification] Device join (manual) notification suppressed by startup timer for peer: {}", peer.hostname);
+                             }
                           }
                      }
                 },
@@ -1654,8 +1666,13 @@ pub fn run() {
 
                                         if should_notify {
                                             if d_state.settings.lock().unwrap().notifications.device_join {
-                                                tracing::info!("[Notification] Triggering 'Device Joined' for discovered peer: {}", peer.hostname);
-                                                send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname), false, Some(1), "devices", NotificationPayload::None);
+                                                // Suppress notifications during startup
+                                                if d_state.should_notify() {
+                                                    tracing::info!("[Notification] Triggering 'Device Joined' for discovered peer: {}", peer.hostname);
+                                                    send_notification(&d_handle, "Device Joined", &format!("{} has joined your cluster", peer.hostname), false, Some(1), "devices", NotificationPayload::None);
+                                                } else {
+                                                    tracing::debug!("[Notification] Device join notification suppressed by startup timer for peer: {}", peer.hostname);
+                                                }
                                             } else {
                                                 tracing::debug!("[Notification] Device join notification suppressed by settings for discovered peer: {}", peer.hostname);
                                             }                                      } else {

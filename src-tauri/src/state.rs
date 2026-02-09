@@ -43,6 +43,8 @@ pub struct AppState {
     pub transport: Arc<Mutex<Option<crate::transport::Transport>>>,
     // Tray Menu Handle
     pub tray_menu: Arc<Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>,
+    // Startup Time (for notification suppression)
+    pub startup_time: std::time::Instant,
 }
 
 impl AppState {
@@ -65,6 +67,7 @@ impl AppState {
             local_files: Arc::new(Mutex::new(HashMap::new())),
             transport: Arc::new(Mutex::new(None)),
             tray_menu: Arc::new(Mutex::new(None)),
+            startup_time: std::time::Instant::now(),
         }
     }
 
@@ -84,5 +87,9 @@ impl AppState {
     pub fn get_peers(&self) -> HashMap<String, Peer> {
         let peers = self.peers.lock().unwrap();
         peers.clone()
+    }
+
+    pub fn should_notify(&self) -> bool {
+        self.startup_time.elapsed() > std::time::Duration::from_secs(60)
     }
 }
