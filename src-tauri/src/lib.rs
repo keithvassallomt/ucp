@@ -928,7 +928,7 @@ async fn probe_ip(
                  transport_clone.send_message(addr, &data_vec).await
             };
             
-            match tokio::time::timeout(std::time::Duration::from_millis(500), send_future).await {
+            match tokio::time::timeout(std::time::Duration::from_millis(2000), send_future).await {
                 Ok(Ok(())) => {
                    tracing::debug!("Probe to {} SUCCESS (Packet Sent)", addr);
                    
@@ -989,38 +989,33 @@ async fn probe_ip(
 
 #[cfg(target_os = "windows")]
 fn configure_windows_firewall() {
-    tracing::info!("Configuring Windows Firewall...");
-    // netsh advfirewall firewall add rule name="ClusterCut" dir=in action=allow protocol=UDP localport=4654
-    // We use a specific name to avoid duplicates? netsh doesn't check dupes easily without query.
-    // We can try to delete first?
+    tracing::info!("Configuring Windows Firewall (Requesting UAC if needed)...");
     
-    // Delete existing rule to ensure clean slate (and avoid dupes if we run this often)
-    let _ = std::process::Command::new("netsh")
-        .args(["advfirewall", "firewall", "delete", "rule", "name=ClusterCut"])
-        .output();
-
-    // Add Rule
-    match std::process::Command::new("netsh")
+    // We use PowerShell 'Start-Process -Verb RunAs' to elevate
+    // Check if rule exists first? netsh doesn't error if exists, just adds duplicate or fails? 
+    // Actually, 'add rule' usually fails if exists unless we delete. 
+    // We'll just run the delete and add commands blindly in the elevated process.
+    // We can chain them in powershell.
+    
+    // Command to run in elevated shell:
+    // netsh advfirewall firewall delete rule name="ClusterCut"
+    // netsh advfirewall firewall add rule name="ClusterCut" dir=in action=allow protocol=UDP localport=4654 profile=any edge=yes
+    
+    let cmd = "netsh advfirewall firewall delete rule name=\"ClusterCut\"; netsh advfirewall firewall add rule name=\"ClusterCut\" dir=in action=allow protocol=UDP localport=4654 profile=any edge=yes";
+    
+    match std::process::Command::new("powershell")
         .args([
-            "advfirewall", "firewall", "add", "rule", 
-            "name=ClusterCut", 
-            "dir=in", 
-            "action=allow", 
-            "protocol=UDP", 
-            "localport=4654"
+            "-NoProfile", 
+            "-Command", 
+            &format!("Start-Process powershell -ArgumentList '-NoProfile -Command \"{}\"' -Verb RunAs -WindowStyle Hidden", cmd)
         ])
-        .output() 
+        .spawn() // Use spawn, don't wait for output because it triggers a UAC dialog unrelated to our process tree often
     {
-        Ok(output) => {
-            if output.status.success() {
-                tracing::info!("Windows Firewall rule added successfully.");
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                tracing::warn!("Failed to add Windows Firewall rule: {}", stderr);
-            }
+        Ok(_) => {
+            tracing::info!("Triggered UAC prompt for Firewall configuration.");
         }
         Err(e) => {
-            tracing::error!("Failed to execute netsh: {}", e);
+            tracing::error!("Failed to launch elevated PowerShell: {}", e);
         }
     }
 }
@@ -1542,16 +1537,6 @@ pub fn run() {
                      if let Err(e) = crate::dbus::start_dbus_server(dbus_handle).await {
                          tracing::error!("Failed to start D-Bus service: {}", e);
                      }
-                });
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                // Attempt to configure firewall on startup
-                // This runs every time, but 'delete' command handles cleanup.
-                // Doing it in a separate thread to not block startup significantly.
-                std::thread::spawn(|| {
-                    configure_windows_firewall();
                 });
             }
 
