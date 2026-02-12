@@ -119,7 +119,7 @@ function Badge({
         ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/25"
         : tone === "bad"
           ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/25"
-          : "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 border-zinc-500/20";
+          : "bg-zinc-100 text-zinc-700 dark:bg-zinc-500/10 dark:text-zinc-300 border-zinc-200 dark:border-zinc-500/20";
 
   return (
     <span className={clsx("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium", classes)}>
@@ -142,7 +142,7 @@ function SectionHeader({
   return (
     <div className="flex items-start justify-between gap-3">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-900/5 dark:bg-white/5">
+        <div className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-800/50">
           {icon}
         </div>
         <div>
@@ -159,7 +159,7 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
   return (
     <div
       className={clsx(
-        "rounded-2xl border border-zinc-900/10 bg-white/70 shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-900/40",
+        "rounded-2xl border border-zinc-200 bg-white/70 shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-900/40",
         className
       )}
     >
@@ -192,7 +192,7 @@ function Button({
         ? "bg-rose-600 text-white hover:bg-rose-700"
         : variant === "ghost"
           ? "bg-transparent hover:bg-zinc-900/5 dark:hover:bg-white/5 text-zinc-800 dark:text-zinc-100"
-          : "bg-zinc-900/5 hover:bg-zinc-900/10 text-zinc-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-zinc-50";
+          : "bg-zinc-100 hover:bg-zinc-200 text-zinc-900 dark:bg-white/5 dark:hover:bg-white/10 dark:text-zinc-50";
 
   return (
     <button className={clsx(base, sizes, variants, "min-w-[44px]", className)} {...props}>
@@ -228,7 +228,7 @@ function IconButton({
           : danger
             ? "text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
             : "text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-50",
-        variant === "default" && !active && !danger && "bg-zinc-900/5 dark:bg-white/5"
+        variant === "default" && !active && !danger && "bg-zinc-100 dark:bg-white/5"
       )}
     >
       {children}
@@ -253,7 +253,7 @@ function Field({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-2xl border border-zinc-900/10 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5">
+    <div className="flex items-start justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5">
       <div className="min-w-0">
         <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{label}</div>
         <div className={clsx("mt-1 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50", mono && "font-mono tracking-wide")}>
@@ -284,7 +284,7 @@ function Modal({
 
   return (
     <div className="no-drag fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 backdrop-blur-sm md:items-center">
-      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl dark:bg-zinc-950">
+      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl dark:border-white/10 dark:bg-zinc-950">
         <div className="flex items-start justify-between gap-3 p-5">
           <div>
             <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{title}</div>
@@ -295,7 +295,7 @@ function Modal({
           </IconButton>
         </div>
         <div className="px-5 pb-5">{children}</div>
-        <div className="flex flex-col gap-2 border-t border-zinc-900/10 bg-zinc-50 p-4 dark:border-white/10 dark:bg-zinc-900/30 md:flex-row md:items-center md:justify-end">
+        <div className="flex flex-col gap-2 border-t border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-zinc-900/30 md:flex-row md:items-center md:justify-end">
           {footer}
         </div>
       </div>
@@ -888,11 +888,53 @@ export default function App() {
   });
 
   /* Theme Setup */
-  // TODO: System preference detection
-  const rootThemeClass = "dark"; // Defaulting to dark for now, or check OS
+  /* Theme Setup */
+  /* Theme Setup */
+  useEffect(() => {
+    let active = true;
+    let cleanupListener: (() => void) | undefined;
+
+    const applySystemTheme = () => {
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    };
+
+    invoke<string | null>("get_theme_override").then((theme) => {
+      if (!active) return;
+
+      if (theme === "light") {
+        invoke("log_frontend", { message: "Theme Override Detected: LIGHT. Forcing light mode." });
+        document.documentElement.classList.remove("dark");
+      } else if (theme === "dark") {
+        invoke("log_frontend", { message: "Theme Override Detected: DARK. Forcing dark mode." });
+        document.documentElement.classList.add("dark");
+      } else {
+        invoke("log_frontend", { message: "No Theme Override. Using System Preference." });
+        applySystemTheme();
+        
+        // Listen for system changes only if no override
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handler = () => {
+           if (active) applySystemTheme();
+        };
+        mediaQuery.addEventListener("change", handler);
+        cleanupListener = () => mediaQuery.removeEventListener("change", handler);
+      }
+    }).catch(e => console.error("Failed to get theme override:", e));
+
+    return () => {
+      active = false;
+      if (cleanupListener) cleanupListener();
+    };
+  }, []);
+
+  // System preference: we use CSS media queries now.
 
   return (
-    <div className={clsx(rootThemeClass, "min-h-screen w-full bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.10),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(99,102,241,0.10),transparent_50%)] dark:bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.12),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(244,63,94,0.10),transparent_50%)] md:h-screen md:overflow-hidden")}>
+    <div className={clsx("min-h-screen w-full bg-zinc-50 dark:bg-zinc-950 bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.10),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(99,102,241,0.10),transparent_50%)] dark:bg-[radial-gradient(1200px_circle_at_0%_0%,rgba(16,185,129,0.12),transparent_60%),radial-gradient(1000px_circle_at_100%_0%,rgba(59,130,246,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_100%,rgba(244,63,94,0.10),transparent_50%)] md:h-screen md:overflow-hidden")}>
 
       <Dialog {...dialog} />
 
@@ -1123,7 +1165,7 @@ export default function App() {
                   "mt-2 h-12 w-full rounded-2xl border bg-white px-4 font-mono text-lg tracking-[0.25em] text-zinc-900 outline-none focus:ring-2 dark:bg-zinc-950 dark:text-zinc-50",
                   joinError
                     ? "border-rose-500 focus:ring-rose-500/40 dark:border-rose-500/50"
-                    : "border-zinc-900/10 focus:ring-emerald-500/40 dark:border-white/10"
+                    : "border-zinc-200 focus:ring-emerald-500/40 dark:border-white/10"
                 )}
                 placeholder="••••••"
                 value={joinPin}
@@ -1190,7 +1232,7 @@ export default function App() {
             <div className="rounded-2xl border border-zinc-900/10 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/5">
               <div className="text-xs font-medium text-zinc-600 dark:text-zinc-400">IP Address / CIDR</div>
               <input
-                className="mt-2 h-12 w-full rounded-2xl border border-zinc-900/10 bg-white px-4 text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
+                className="mt-2 h-12 w-full rounded-2xl border border-zinc-200 bg-white px-4 text-zinc-900 outline-none focus:ring-2 focus:ring-emerald-500/40 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-50"
                 placeholder="e.g. 10.8.0.5 or 192.168.1.0/24"
                 value={manualIp}
                 onChange={(e) => setManualIp(e.target.value)}
@@ -1520,7 +1562,7 @@ function HistoryView({ items }: { items: HistoryItem[] }) {
             return (
               <div
                 key={it.id}
-                className="rounded-2xl border border-zinc-900/10 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5"
+                className="rounded-2xl border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-white/5"
               >
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">

@@ -35,6 +35,14 @@ struct Args {
 
     #[arg(long, default_value_t = false)]
     minimized: bool,
+
+    #[arg(long)]
+    theme: Option<String>,
+}
+
+#[tauri::command]
+async fn get_theme_override() -> Option<String> {
+    std::env::var("CLUSTERCUT_THEME").ok()
 }
 
 #[tauri::command]
@@ -157,9 +165,13 @@ fn init_logging() -> Args {
         Ok(a) => a,
         Err(_) => {
             // Keep default if parsing fails (e.g. extra args)
-            Args { log_level: "info".to_string(), debug: false, minimized: false }
+            Args { log_level: "info".to_string(), debug: false, minimized: false, theme: None }
         }
     };
+
+    if let Some(theme) = &args.theme {
+        std::env::set_var("CLUSTERCUT_THEME", theme);
+    }
 
     let level = if args.debug {
         tracing::Level::DEBUG
@@ -219,6 +231,10 @@ fn init_logging() -> Args {
         .init();
         
     tracing::info!("Logging initialized. Level: {}, Hostname: {}", level, get_hostname_internal());
+
+    if let Some(theme) = &args.theme {
+        tracing::info!("Theme Override Active: {}", theme);
+    }
 
     if cfg!(target_os = "macos") {
         if let Ok(exe) = std::env::current_exe() {
@@ -2046,6 +2062,7 @@ pub fn run() {
             configure_autostart,
             get_autostart_state,
             show_native_notification,
+            get_theme_override,
         ])
 
         .on_window_event(|window, event| {
