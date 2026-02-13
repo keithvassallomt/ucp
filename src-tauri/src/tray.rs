@@ -192,9 +192,31 @@ pub fn create_tray(app: &AppHandle) -> tauri::Result<TrayIcon<Wry>> {
 
     // Setup Theme Listener
     let listener_handle = app.clone();
+    // Setup Theme Listener
+    let listener_handle = app.clone();
     app.listen("tauri://theme-changed", move |event| {
         tracing::info!("Received tauri://theme-changed event: {:?}", event);
-        update_tray_icon(&listener_handle);
+        
+        // Payload is now a simple string "dark" or "light" (json string)
+        if let Ok(theme) = serde_json::from_str::<String>(event.payload()) {
+             tracing::info!("Parsed Theme String: {}", theme);
+             
+             // Map to gnome-like string for storage consistency if needed, 
+             // OR just store "dark"/"light" and update get_themed_icon logic.
+             // Our AppState.current_theme stores "prefer-dark" or "default" (from gsettings).
+             // But here we might receive "dark" or "light" from our own poller.
+             // Poller emits "dark if prefer-dark else light".
+             // So we store "dark" or "light".
+             
+             // Update State
+             let state = listener_handle.state::<AppState>();
+             *state.current_theme.lock().unwrap() = Some(theme.clone());
+             
+             update_tray_icon(&listener_handle);
+        } else {
+             // Fallback for object payload if any
+             tracing::error!("Failed to parse theme string: {}", event.payload());
+        }
     });
 
     Ok(tray)
@@ -233,8 +255,17 @@ fn get_platform_icon(app: &AppHandle) -> (Image<'static>, bool) {
 fn get_themed_icon(app: &AppHandle) -> (Image<'static>, bool) {
     use tauri::Theme;
 
-    // Attempt to detect theme via Main Window
-    let theme = if let Some(window) = app.get_webview_window("main") {
+    // Attempt to detect theme via AppState (Polled) or Main Window (Fallback)
+    let state = app.state::<AppState>();
+    let polled_theme = state.current_theme.lock().unwrap().clone();
+
+    let theme = if let Some(t) = polled_theme {
+        if t == "prefer-dark" || t == "dark" {
+            Theme::Dark
+        } else {
+            Theme::Light
+        }
+    } else if let Some(window) = app.get_webview_window("main") {
         match window.theme() {
             Ok(t) => t,
             Err(_) => Theme::Light, // Fallback
@@ -353,10 +384,24 @@ pub fn set_badge(app: &AppHandle, show: bool) {
             {
                 // Linux/macOS Theme Logic
                 use tauri::Theme;
-                let theme = if let Some(window) = app.get_webview_window("main") {
-                    window.theme().unwrap_or(Theme::Light)
+                
+                // Attempt to detect theme via AppState (Polled) or Main Window (Fallback)
+                let state = app.state::<AppState>();
+                let polled_theme = state.current_theme.lock().unwrap().clone();
+            
+                let theme = if let Some(t) = polled_theme {
+                    if t == "prefer-dark" || t == "dark" {
+                        Theme::Dark
+                    } else {
+                        Theme::Light
+                    }
+                } else if let Some(window) = app.get_webview_window("main") {
+                    match window.theme() {
+                        Ok(t) => t,
+                        Err(_) => Theme::Light, // Fallback
+                    }
                 } else {
-                    Theme::Light
+                    Theme::Light // Fallback if no window
                 };
 
                 match theme {

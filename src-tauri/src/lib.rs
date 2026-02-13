@@ -46,6 +46,11 @@ async fn get_theme_override() -> Option<String> {
 }
 
 #[tauri::command]
+async fn get_current_theme(state: tauri::State<'_, AppState>) -> Result<Option<String>, ()> {
+    Ok(state.current_theme.lock().unwrap().clone())
+}
+
+#[tauri::command]
 async fn configure_autostart(app_handle: tauri::AppHandle, enable: bool) -> Result<bool, String> {
     // Check if running in Flatpak
     if cfg!(target_os = "linux") && std::env::var("FLATPAK_ID").is_ok() {
@@ -1459,6 +1464,73 @@ async fn confirm_pending_clipboard(
     }
 }
 
+#[cfg(target_os = "linux")]
+fn spawn_linux_theme_poller(app: tauri::AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    
+    let app_handle = app.clone();
+    
+    // We already have a shutdown flag in AppState, but accessing it requires state which might be locked?
+    // Actually, AppState.shutdown is AtomicBool so it's fine.
+    
+    std::thread::spawn(move || {
+        let mut last_theme = String::new();
+        
+        // Initial delay to let startup settle
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        
+        tracing::info!("Starting Linux Theme Poller...");
+        
+        loop {
+            // Check shutdown
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                 if state.is_shutdown() {
+                     break;
+                 }
+            }
+            
+            // Poll gsettings
+            // gsettings get org.gnome.desktop.interface color-scheme
+            match std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.interface", "color-scheme"])
+                .output() 
+            {
+                Ok(output) => {
+                    let raw = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    // Output is usually "'prefer-dark'" or "'default'" (with quotes)
+                    let theme = raw.replace("'", "");
+                    
+                    if theme != last_theme {
+                        tracing::info!("Linux Theme Changed: {} -> {}", last_theme, theme);
+                        last_theme = theme.clone();
+                        
+                        // Update State
+                        if let Some(state) = app_handle.try_state::<AppState>() {
+                             *state.current_theme.lock().unwrap() = Some(theme.clone());
+                        }
+                        
+                        // Update Tray
+                        crate::tray::update_tray_icon(&app_handle);
+                        
+                        // Emit Event
+                        // Emit Event (Simple string: "dark" or "light") matched to Tauri's internal format
+                        let simple_theme = if theme == "prefer-dark" { "dark" } else { "light" };
+                        let _ = app_handle.emit("tauri://theme-changed", simple_theme);
+                    }
+                },
+                Err(e) => {
+                    // Reduce log spam if gsettings is missing (e.g. non-GNOME)
+                    // tracing::debug!("Failed to run gsettings: {}", e);
+                }
+            }
+            
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+    });
+}
+
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
@@ -1584,6 +1656,11 @@ pub fn run() {
                 std::thread::spawn(|| {
                     configure_windows_firewall();
                 });
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                spawn_linux_theme_poller(app_handle.clone());
             }
 
             // Load State

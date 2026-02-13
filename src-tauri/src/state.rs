@@ -43,6 +43,8 @@ pub struct AppState {
     pub transport: Arc<Mutex<Option<crate::transport::Transport>>>,
     // Tray Menu Handle
     pub tray_menu: Arc<Mutex<Option<tauri::menu::Menu<tauri::Wry>>>>,
+    // Current Theme (Linux workaround)
+    pub current_theme: Arc<Mutex<Option<String>>>,
     // Startup Time (for notification suppression)
     pub startup_time: std::time::Instant,
 }
@@ -67,6 +69,7 @@ impl AppState {
             local_files: Arc::new(Mutex::new(HashMap::new())),
             transport: Arc::new(Mutex::new(None)),
             tray_menu: Arc::new(Mutex::new(None)),
+            current_theme: Arc::new(Mutex::new(None)),
             startup_time: std::time::Instant::now(),
         }
     }
