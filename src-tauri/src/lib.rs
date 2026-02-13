@@ -2530,6 +2530,23 @@ async fn handle_message(msg: Message, addr: std::net::SocketAddr, listener_state
                                     return;
                             };
 
+                            // Verify Timestamp Freshness (120s threshold)
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+
+                            let diff = if now > ts {
+                                now - ts
+                            } else {
+                                ts - now // Future timestamp (clock skew)
+                            };
+
+                            if diff > 120 {
+                                tracing::warn!("Ignored stale clipboard message from {} (Timestamp: {}, Now: {}, Diff: {}s)", sender, ts, now, diff);
+                                return;
+                            }
+
                             // Self-sender check
                             {
                                 let my_hostname = get_hostname_internal();
